@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Poli Page · Gin integration demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,400;0,500;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/static/demo.css">
+</head>
+<body>
+
+<div class="page">
+
+  <header class="mast">
+    <h1 class="wordmark">Welcome to <span class="brand">Poli&nbsp;Page</span></h1>
+    <p class="tagline">Your Gin integration, your dashboard. Every SDK feature, one click away.</p>
+    <div class="status-row">
+      <span class="dot"></span>
+      <span>api-develop.poli.page</span>
+      <span class="sep">·</span>
+      <span>poli-page/gin v0.1.0</span>
+    </div>
+  </header>
+
+  <section>
+    <div class="head">
+      <h2>Render <span class="label">01 · instant</span></h2>
+      <p class="desc">
+        Three SDK entry points for rendering the <code>getting-started/welcome</code> template:
+        binary PDF (<code>Render.PDF</code>), streamed PDF (<code>Render.PDFStream</code>),
+        and HTML preview (<code>Render.Preview</code>).
+      </p>
+    </div>
+    <div class="actions">
+      <button class="run" data-action="pdf"     data-target="r1">Render PDF</button>
+      <button class="run" data-action="stream"  data-target="r1">Via stream</button>
+      <button class="run" data-action="preview" data-target="r1">HTML preview</button>
+    </div>
+    <div class="result" id="r1">
+      <div class="pane-label"><span>output</span><span class="meta">idle</span></div>
+      <div class="empty">Press a button to render.</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <h2>Documents <span class="label">02 · store &amp; retrieve</span></h2>
+      <p class="desc">
+        Persist a render (<code>Render.Document</code>), then fetch it back, preview it,
+        list thumbnails, or soft-delete it. The four right-hand buttons unlock after a document exists.
+      </p>
+    </div>
+    <div class="doc-id" id="doc-id">
+      <span class="indicator"></span>
+      <span id="doc-id-text">no document stored</span>
+    </div>
+    <div class="actions">
+      <button class="run" data-action="doc-create"     data-target="r2">Store new document</button>
+      <button class="run" data-action="doc-get"        data-target="r2" data-needs-doc>Get PDF</button>
+      <button class="run" data-action="doc-preview"    data-target="r2" data-needs-doc>Preview</button>
+      <button class="run" data-action="doc-thumbnails" data-target="r2" data-needs-doc>Thumbnails</button>
+      <button class="run" data-action="doc-delete"     data-target="r2" data-needs-doc>Delete</button>
+    </div>
+    <div class="result" id="r2">
+      <div class="pane-label"><span>output</span><span class="meta">idle</span></div>
+      <div class="empty">Store a document to begin.</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <h2>Error handling <span class="label">03 · typed errors</span></h2>
+      <p class="desc">
+        Sends a deliberately malformed version string to trigger
+        <code>INVALID_VERSION_FORMAT</code>. The integration's <code>ErrorMiddleware</code>
+        propagates the API code, message, and request-id straight through as JSON.
+      </p>
+    </div>
+    <div class="actions">
+      <button class="run" data-action="bad-version" data-target="r3">Trigger 400</button>
+    </div>
+    <div class="result" id="r3">
+      <div class="pane-label"><span>output</span><span class="meta">idle</span></div>
+      <div class="empty">Press the button to see the error payload.</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <h2>Command line <span class="label">04 · CLI</span></h2>
+      <p class="desc">
+        The same SDK from the shell. <code>polipage-render</code> ships in
+        <code>cmd/polipage-render/</code>; install or <code>go run</code> directly. Exit
+        codes per <code>docs/cli.md</code>.
+      </p>
+    </div>
+    <div class="cli">
+      <button class="copy" data-copy="go run ./cmd/polipage-render --project=getting-started --template=welcome --template-version=1.0.0 --data='{&quot;name&quot;:&quot;world&quot;}' -o /tmp/welcome.pdf">Copy</button>
+      <span class="prompt">$</span>go run ./cmd/polipage-render --project=getting-started \
+        --template=welcome --template-version=1.0.0 \
+        --data='{"name":"world"}' -o /tmp/welcome.pdf
+    </div>
+    <div class="cli">
+      <button class="copy" data-copy="go install github.com/poli-page/gin/cmd/polipage-render@latest">Copy</button>
+      <span class="prompt">$</span>go install github.com/poli-page/gin/cmd/polipage-render@latest
+    </div>
+  </section>
+
+  <footer>
+    <span>poli-page/gin · v0.1.0</span>
+    <span class="links"><a href="https://docs.poli.page" target="_blank" rel="noopener">docs.poli.page</a></span>
+  </footer>
+
+</div>
+
+<script src="/static/demo.js"></script>
+</body>
+</html>

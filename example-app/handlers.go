@@ -1,6 +1,8 @@
 package main
 
 import (
+	"embed"
+	"io/fs"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -26,12 +28,21 @@ func demoInput() polipage.ProjectModeInput {
 	}
 }
 
-// registerRoutes wires every row of spec §14.1's table. The handlers
-// are paper-thin — pull the client off c, call one SDK method, hand
-// the result to a polipagegin helper. Production handlers look the
-// same in real Gin apps; that is the demonstration.
-func registerRoutes(r *gin.Engine) {
-	r.GET("/", indexHandler)
+// registerRoutes wires every row of spec §14.1's table plus the demo
+// UI assets. Handlers are paper-thin — pull the client off c, call one
+// SDK method, hand the result to a polipagegin helper. Production
+// handlers in real Gin apps look the same.
+func registerRoutes(r *gin.Engine, assets embed.FS) {
+	// Demo dashboard at /. The HTML is the entry point; static/* serves
+	// the CSS and JS it references.
+	r.GET("/", func(c *gin.Context) {
+		c.FileFromFS("templates/demo.html", http.FS(assets))
+	})
+	staticFS, err := fs.Sub(assets, "static")
+	if err != nil {
+		panic(err)
+	}
+	r.StaticFS("/static", http.FS(staticFS))
 
 	api := r.Group("/api")
 	api.GET("/render/pdf", renderPDFHandler)
@@ -43,12 +54,6 @@ func registerRoutes(r *gin.Engine) {
 	api.GET("/documents/:id/thumbnails", getDocumentThumbnailsHandler)
 	api.DELETE("/documents/:id", deleteDocumentHandler)
 	api.GET("/render/error", renderErrorHandler)
-}
-
-func indexHandler(c *gin.Context) {
-	// Task 11 replaces this with the embed.FS-served demo dashboard.
-	c.String(http.StatusOK, "polipagegin demo — interactive UI lands in Task 11.\n"+
-		"Try: GET /api/render/pdf, GET /api/render/preview, POST /api/documents, etc.\n")
 }
 
 func renderPDFHandler(c *gin.Context) {

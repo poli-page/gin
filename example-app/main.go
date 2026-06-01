@@ -16,6 +16,7 @@ package main
 
 import (
 	"context"
+	"embed"
 	"errors"
 	"log"
 	"net/http"
@@ -28,6 +29,17 @@ import (
 	polipagegin "github.com/poli-page/gin"
 	polipage "github.com/poli-page/sdk-go"
 )
+
+// assets bundles the demo dashboard's static files into the binary so a
+// single `go run .` (or built binary) serves the UI without an external
+// asset directory.
+//
+// Note: //go:embed fails at compile time if any named directory is
+// empty; both templates/ and static/ must contain at least one file
+// before this compiles.
+//
+//go:embed templates static
+var assets embed.FS
 
 // workspaceDotEnv is the dev-time convenience path the example app reads
 // at boot. A missing file is not an error — real shell exports always
@@ -61,7 +73,7 @@ func main() {
 		log.Fatalf("SetTrustedProxies: %v", err)
 	}
 
-	registerRoutes(r)
+	registerRoutes(r, assets)
 
 	srv := &http.Server{
 		Addr:              ":8080",
