@@ -1,0 +1,153 @@
+package main
+
+import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	polipagegin "github.com/poli-page/gin"
+	polipage "github.com/poli-page/sdk-go"
+)
+
+// Demo fixtures shared by all render handlers. The "getting-started"
+// project + "welcome" template at version 1.0.0 is the canonical demo
+// content on api-develop.poli.page.
+const (
+	demoProject  = "getting-started"
+	demoTemplate = "welcome"
+	demoVersion  = "1.0.0"
+)
+
+func demoInput() polipage.ProjectModeInput {
+	return polipage.ProjectModeInput{
+		Project:  demoProject,
+		Template: demoTemplate,
+		Version:  polipage.Opt(demoVersion),
+		Data:     map[string]any{"name": "demo"},
+	}
+}
+
+// registerRoutes wires every row of spec §14.1's table. The handlers
+// are paper-thin — pull the client off c, call one SDK method, hand
+// the result to a polipagegin helper. Production handlers look the
+// same in real Gin apps; that is the demonstration.
+func registerRoutes(r *gin.Engine) {
+	r.GET("/", indexHandler)
+
+	api := r.Group("/api")
+	api.GET("/render/pdf", renderPDFHandler)
+	api.GET("/render/pdf-stream", renderPDFStreamHandler)
+	api.GET("/render/preview", renderPreviewHandler)
+	api.POST("/documents", postDocumentHandler)
+	api.GET("/documents/:id", getDocumentHandler)
+	api.GET("/documents/:id/preview", getDocumentPreviewHandler)
+	api.GET("/documents/:id/thumbnails", getDocumentThumbnailsHandler)
+	api.DELETE("/documents/:id", deleteDocumentHandler)
+	api.GET("/render/error", renderErrorHandler)
+}
+
+func indexHandler(c *gin.Context) {
+	// Task 11 replaces this with the embed.FS-served demo dashboard.
+	c.String(http.StatusOK, "polipagegin demo — interactive UI lands in Task 11.\n"+
+		"Try: GET /api/render/pdf, GET /api/render/preview, POST /api/documents, etc.\n")
+}
+
+func renderPDFHandler(c *gin.Context) {
+	client := polipagegin.ClientFrom(c)
+	pdf, err := client.Render.PDF(c.Request.Context(), demoInput())
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	polipagegin.PDF(c, pdf, polipagegin.PDFOptions{Filename: "welcome.pdf", Inline: true})
+}
+
+func renderPDFStreamHandler(c *gin.Context) {
+	client := polipagegin.ClientFrom(c)
+	body, err := client.Render.PDFStream(c.Request.Context(), demoInput())
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	defer func() { _ = body.Close() }()
+	polipagegin.PDFStream(c, body, polipagegin.PDFOptions{Filename: "welcome.pdf", Inline: true})
+}
+
+func renderPreviewHandler(c *gin.Context) {
+	client := polipagegin.ClientFrom(c)
+	result, err := client.Render.Preview(c.Request.Context(), demoInput())
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	polipagegin.Preview(c, result.HTML)
+}
+
+func postDocumentHandler(c *gin.Context) {
+	client := polipagegin.ClientFrom(c)
+	doc, err := client.Render.Document(c.Request.Context(), demoInput())
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"documentId": doc.DocumentID,
+		"expiresAt":  doc.ExpiresAt,
+	})
+}
+
+func getDocumentHandler(c *gin.Context) {
+	client := polipagegin.ClientFrom(c)
+	doc, err := client.Documents.Get(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	polipagegin.DocumentRedirect(c, doc)
+}
+
+func getDocumentPreviewHandler(c *gin.Context) {
+	client := polipagegin.ClientFrom(c)
+	result, err := client.Documents.Preview(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	polipagegin.Preview(c, result.HTML)
+}
+
+func getDocumentThumbnailsHandler(c *gin.Context) {
+	client := polipagegin.ClientFrom(c)
+	thumbs, err := client.Documents.Thumbnails(c.Request.Context(), c.Param("id"), polipage.ThumbnailOptions{
+		Width: 200,
+	})
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"thumbnails": thumbs})
+}
+
+func deleteDocumentHandler(c *gin.Context) {
+	client := polipagegin.ClientFrom(c)
+	if err := client.Documents.Delete(c.Request.Context(), c.Param("id")); err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// renderErrorHandler triggers a deliberate validation error so the
+// caller can exercise ErrorMiddleware end-to-end. An invalid semver
+// version surfaces from the API as VALIDATION_ERROR / 400; the
+// middleware maps it to a JSON {code, message, requestId} response.
+func renderErrorHandler(c *gin.Context) {
+	client := polipagegin.ClientFrom(c)
+	badInput := demoInput()
+	badInput.Version = polipage.Opt("not-a-semver-version")
+	_, err := client.Render.PDF(c.Request.Context(), badInput)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"unexpected": "no error returned from deliberately bad version"})
+}
