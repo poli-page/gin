@@ -1,0 +1,134 @@
+name: CI
+on:
+  push:
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.25']
+        gin: ['v1.9.1', 'v1.10.0']
+        include:
+          - go: 'tip'
+            gin: 'v1.10.0'
+            experimental: true
+    continue-on-error: ${{ matrix.experimental == true }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: gin
+      - uses: actions/checkout@v4
+        with:
+          repository: poli-page/sdk-go
+          path: sdk-go
+          ref: main
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache: false
+      - name: Pin Gin version
+        working-directory: gin
+        run: |
+          if [ -f go.mod ]; then
+            go get github.com/gin-gonic/gin@${{ matrix.gin }}
+            go mod tidy
+          else
+            echo "Skipping pin: no go.mod yet"
+          fi
+      - name: Format check
+        working-directory: gin
+        run: |
+          if [ -f go.mod ]; then
+            test -z "$(gofmt -l .)" || (gofmt -d .; exit 1)
+          else
+            echo "Skipping gofmt: no go.mod yet"
+          fi
+      - name: Vet
+        working-directory: gin
+        run: |
+          if [ -f go.mod ]; then
+            go vet ./...
+          else
+            echo "Skipping vet: no go.mod yet"
+          fi
+      - name: Lint
+        working-directory: gin
+        run: |
+          if [ -f .golangci.yml ]; then
+            curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
+            $(go env GOPATH)/bin/golangci-lint run
+          else
+            echo "Skipping lint: no .golangci.yml yet"
+          fi
+      - name: Unit tests (race)
+        working-directory: gin
+        run: |
+          if [ -f go.mod ]; then
+            go test -race -count=1 ./...
+          else
+            echo "Skipping tests: no go.mod yet"
+          fi
+      - name: Build
+        working-directory: gin
+        run: |
+          if [ -f go.mod ]; then
+            go build ./...
+          else
+            echo "Skipping build: no go.mod yet"
+          fi
+
+  integration:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: gin
+      - uses: actions/checkout@v4
+        with:
+          repository: poli-page/sdk-go
+          path: sdk-go
+          ref: main
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Integration test (gated on POLI_PAGE_API_KEY)
+        working-directory: gin
+        env:
+          POLI_PAGE_API_KEY: ${{ secrets.POLI_PAGE_API_KEY }}
+          POLI_PAGE_BASE_URL: https://api-develop.poli.page
+        run: |
+          if [ -z "$POLI_PAGE_API_KEY" ]; then
+            echo "POLI_PAGE_API_KEY not set; skipping integration test"
+            exit 0
+          fi
+          if [ ! -d tests/integration ] || [ -z "$(ls -A tests/integration 2>/dev/null)" ]; then
+            echo "No tests/integration yet; skipping"
+            exit 0
+          fi
+          go test -tags=integration -count=1 ./tests/integration/...
+      - name: CLI smoke test
+        working-directory: gin
+        env:
+          POLI_PAGE_API_KEY: ${{ secrets.POLI_PAGE_API_KEY }}
+          POLI_PAGE_BASE_URL: https://api-develop.poli.page
+        run: |
+          if [ -z "$POLI_PAGE_API_KEY" ]; then
+            echo "POLI_PAGE_API_KEY not set; skipping CLI smoke"
+            exit 0
+          fi
+          if [ ! -d cmd/polipage-render ]; then
+            echo "No cmd/polipage-render yet; skipping"
+            exit 0
+          fi
+          go run ./cmd/polipage-render \
+              --project=getting-started \
+              --template=welcome \
+              --template-version=1.0.0 \
+              --data='{"name":"ci"}' \
+              -o /tmp/welcome.pdf
+          test -s /tmp/welcome.pdf

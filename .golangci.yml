@@ -1,0 +1,49 @@
+version: "2"
+
+run:
+  timeout: 5m
+  go: "1.25"
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - gocritic
+    - gosec
+    - govet
+    - revive
+    - staticcheck
+    - unused
+  settings:
+    revive:
+      severity: warning
+      rules:
+        - name: exported              # exported identifiers must have a comment
+        - name: var-naming
+        - name: error-return
+        - name: error-naming
+        - name: if-return
+        - name: indent-error-flow
+        - name: superfluous-else
+        - name: unused-parameter
+          disabled: true               # idiomatic ctx handler params trigger this
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+      disabled-checks:
+        - whyNoLint                    # paired with the //nolint Why: convention
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec                      # test fixtures may use weak crypto/hardcoded keys
+      - path: cmd/polipage-render/
+        linters:
+          - gocritic                   # CLI shape often differs from library shape
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
