@@ -138,7 +138,7 @@ The handler controls the lifetime of the `io.ReadCloser` returned by `Render.PDF
 
 Gin's `c.Errors` is a slice, not a single value. `ErrorMiddleware` reads `c.Errors.Last()` (most recent) and only acts when its `Err` is a `*polipage.Error`. If a handler queues multiple errors, only the last one drives the response. Document the rule in `errors.go` and link to the Gin docs on `c.Error`/`c.Errors`. Do NOT iterate the whole slice looking for the first `*polipage.Error` — that creates non-obvious response shapes when downstream middleware also pushes errors.
 
-**`c.Errors.Last()` returns `*gin.Error`, not `error`.** The `*polipage.Error` lives inside the `.Err` field. `errors.As(c.Errors.Last(), &pe)` silently fails (the inner `Err` is not unwrapped by `*gin.Error`'s default `As` chain — Gin wraps but doesn't expose `Unwrap`). The correct call is `errors.As(c.Errors.Last().Err, &pe)`. Tests must cover both shapes (the right one and the easy-to-typo wrong one) so a future agent doesn't "simplify" the working call back into the broken one.
+**`c.Errors.Last()` returns `*gin.Error`, not `error`.** The `*polipage.Error` lives inside the `.Err` field. Both `errors.As(c.Errors.Last(), &pe)` and `errors.As(c.Errors.Last().Err, &pe)` extract a wrapped `*polipage.Error` in gin v1.9+ — gin's `*Error.Unwrap()` returns `.Err`, so the standard unwrap chain reaches the inner value. The implementation uses `errors.As(ge.Err, &pe)` (with `.Err`) to keep the wrap chain explicit at the call site, and the test suite asserts both forms succeed. If a future gin release drops `Unwrap`, the direct-form assertion fails and the explicit `.Err` access is what keeps the middleware working.
 
 ### 10.5 `ErrorMiddleware` only handles `*polipage.Error`
 

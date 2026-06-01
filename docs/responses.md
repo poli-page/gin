@@ -110,8 +110,8 @@ polipagegin.PDFOptions{Filename: "facture-élève.pdf"}
 //      filename*=UTF-8''facture-%C3%A9l%C3%A8ve.pdf
 ```
 
-- `filename="…"` — ASCII fallback for clients that don't speak RFC 5987 (rare in 2026, kept for parity with the symfony-bundle).
-- `filename*=UTF-8''…` — the actual UTF-8 name browsers display. Encoded with `url.PathEscape` on a per-character basis, matching the encoding the Symfony helper produces.
+- `filename="…"` — ASCII fallback for clients that don't speak RFC 5987 (rare in 2026, kept for parity with the symfony-bundle). Non-ASCII runes collapse to `_`; backslashes and double quotes are backslash-escaped per RFC 6266 §4.1's quoted-string production.
+- `filename*=UTF-8''…` — the actual UTF-8 name browsers display. Encoded with a strict RFC 5987 §3.2.1 attr-char allowlist (byte-by-byte, so `é` serialises as `%C3%A9` — the UTF-8 byte stream percent-encoded, not the code point).
 
 Empty `Filename` defaults to `document.pdf`.
 

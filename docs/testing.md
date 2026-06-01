@@ -125,7 +125,7 @@ func TestInvoiceHandler_Show(t *testing.T) {
 	h := &apphttp.InvoiceHandler{Renderer: fake}
 	r.GET("/invoices/:id", h.Show)
 
-	req := httptest.NewRequest(http.MethodGet, "/invoices/42", nil)
+	req := httptest.NewRequest(http.MethodGet, "/invoices/42", http.NoBody)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -163,7 +163,7 @@ One smoke test per repo. Lives in `tests/integration/` behind a build tag, skips
 // tests/integration/render_against_develop_test.go
 //go:build integration
 
-package integration_test
+package integration
 
 import (
 	"context"

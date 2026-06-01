@@ -85,7 +85,7 @@ This is cheaper than streaming when the document was already produced server-sid
 
 - **Reverse proxies that buffer kill the benefit.** `PDFStream` sets `X-Accel-Buffering: no` which nginx honours per-response; Cloudflare's "auto-buffering" on Pro+ plans ignores it and buffers anyway (disable in the dashboard for the route, or use the Cloudflare API). Behind any other proxy, check its docs — if you can't get per-response opt-out, set `proxy_buffering off` globally on the streaming-route location block. If you can't disable buffering anywhere in the chain, buffered `Render.PDF` + `polipagegin.PDF` is the saner default; "streaming through a buffering proxy" is the worst of both worlds.
 
-- **`http.Flusher` is not always present.** Gin's default `gin.ResponseWriter` implements it on HTTP/1.1 and HTTP/2; some custom middleware (compression, hijacking) replaces the writer with one that doesn't. The helper falls back to plain `Write` calls when the assert fails — bytes still go out, just at the kernel's discretion. If you've installed a writer-wrapping middleware and streaming feels laggy, that's the first place to look.
+- **`http.Flusher` is not always usable.** Gin's `gin.ResponseWriter` interface always embeds `http.Flusher`, so the type assertion never fails — but its `Flush()` delegates to the underlying writer, which on rare custom-middleware setups may not be a Flusher itself. In every realistic deployment (Go's `net/http` writer, `httptest.NewRecorder`, Gin's default test recorder) the flush works. If you've installed a writer-wrapping middleware and streaming feels laggy, that's the first place to look.
 
 - **Cancellation propagates correctly only if you pass `c.Request.Context()`.** When the browser closes the connection, Gin cancels the request context; the SDK aborts the upstream request and `PDFStream` writes whatever bytes it has flushed so far. Passing `context.Background()` instead leaves the goroutine reading from the upstream until the SDK timeout fires.
 
@@ -96,4 +96,4 @@ This is cheaper than streaming when the document was already produced server-sid
 - [README → API at a glance](../README.md#api-at-a-glance) — the parent section this deep-dive expands.
 - [docs/responses.md](responses.md) — buffered `PDF`, `Preview`, and `DocumentRedirect` for the cases streaming is overkill.
 - [docs/middleware.md](middleware.md) — how the client gets to the handler in the first place.
-- Gin docs on [`Context.DataFromReader`](https://pkg.go.dev/github.com/gin-gonic/gin#Context.DataFromReader) — the primitive `PDFStream` is built on.
+- Gin docs on [`Context.Writer`](https://pkg.go.dev/github.com/gin-gonic/gin#ResponseWriter) — the `http.Flusher`-aware writer `PDFStream` writes through. (`Context.DataFromReader` would be the idiomatic shortcut but it does not flush between chunks; `PDFStream` runs its own 32 KB Read/Write/Flush loop instead.)

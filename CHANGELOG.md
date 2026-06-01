@@ -4,7 +4,7 @@ All notable changes to `poli-page/gin` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
-## [0.1.0] — TBD
+## [0.1.0] — 2026-06-01
 
 ### Added
 - `polipagegin.Middleware(client)` — gin.HandlerFunc that attaches a `*polipage.Client` to the gin context. Pair with `polipagegin.ClientFrom(c)` inside handlers.

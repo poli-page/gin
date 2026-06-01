@@ -47,8 +47,10 @@ When `-o` is omitted the binary writes the PDF bytes to stdout. Diagnostics stil
 polipage-render \
     --inline-template='<h1>Hello {{ name }}</h1>' \
     --data='{"name":"World"}' \
-    -o hello.pdf
+    -o hello.html
 ```
+
+Inline mode renders via `Render.Preview` and writes the HTML output; the SDK does not support PDF rendering from a raw `--inline-template` (only project-mode inputs can produce PDFs). Use `--project` + `--template` for a PDF.
 
 ### Use the develop API
 
