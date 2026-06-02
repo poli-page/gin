@@ -139,7 +139,7 @@ client := polipage.NewClient(cfg.Options()...)
 | `polipagegin.Config` / `polipagegin.FromEnv()` | Env-driven configuration loader. |
 | `cmd/polipage-render` | Smoke-test binary that renders a template end-to-end. |
 
-Full reference: [docs/responses.md](docs/responses.md), [docs/middleware.md](docs/middleware.md), and the Go reference on [pkg.go.dev](https://pkg.go.dev/github.com/poli-page/gin).
+Full reference: [pkg.go.dev/github.com/poli-page/gin](https://pkg.go.dev/github.com/poli-page/gin).
 
 ## Errors
 
