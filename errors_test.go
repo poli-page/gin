@@ -92,10 +92,10 @@ func TestErrorMiddleware_RateLimit429PassThrough(t *testing.T) {
 	assert.Equal(t, "QUOTA_EXCEEDED", body["code"])
 }
 
-func TestErrorMiddleware_NetworkErrorTransformsToBadGateway(t *testing.T) {
-	// SDK's network_error has StatusCode 0 (the request never reached the
-	// API), Code "network_error". The middleware does its one transformation:
-	// 502 + uppercase "NETWORK_ERROR".
+func TestErrorMiddleware_NetworkErrorMapsTo503(t *testing.T) {
+	// SDK's network_error has StatusCode 0 (request never reached the API);
+	// ToPayload() surfaces 503 (Service Unavailable). Code passes through
+	// verbatim — no "NETWORK_ERROR" rewrite.
 	w, _ := runErrorMiddleware(func(c *gin.Context) {
 		_ = c.Error(&polipage.Error{
 			Code:      polipage.ErrCodeNetworkError,
@@ -104,19 +104,18 @@ func TestErrorMiddleware_NetworkErrorTransformsToBadGateway(t *testing.T) {
 		})
 	})
 
-	assert.Equal(t, http.StatusBadGateway, w.Code,
-		"network errors must collapse to 502")
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code,
+		"network errors map to 503 via the SDK payload")
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
-	assert.Equal(t, "NETWORK_ERROR", body["code"],
-		"code must be uppercase NETWORK_ERROR on transformation")
+	assert.Equal(t, polipage.ErrCodeNetworkError, body["code"],
+		"code is the SDK's code verbatim — no NETWORK_ERROR rewrite")
 	assert.Equal(t, "connection refused", body["message"])
+	assert.Equal(t, float64(503), body["status"])
 	assert.Equal(t, "req_net", body["requestId"])
 }
 
-func TestErrorMiddleware_TimeoutAlsoTransformsToBadGateway(t *testing.T) {
-	// IsNetworkError() returns true for both network_error and timeout —
-	// same 502 transformation.
+func TestErrorMiddleware_TimeoutMapsTo504(t *testing.T) {
 	w, _ := runErrorMiddleware(func(c *gin.Context) {
 		_ = c.Error(&polipage.Error{
 			Code:    polipage.ErrCodeTimeout,
@@ -124,10 +123,11 @@ func TestErrorMiddleware_TimeoutAlsoTransformsToBadGateway(t *testing.T) {
 		})
 	})
 
-	assert.Equal(t, http.StatusBadGateway, w.Code)
+	assert.Equal(t, http.StatusGatewayTimeout, w.Code)
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
-	assert.Equal(t, "NETWORK_ERROR", body["code"])
+	assert.Equal(t, polipage.ErrCodeTimeout, body["code"])
+	assert.Equal(t, float64(504), body["status"])
 }
 
 func TestErrorMiddleware_IgnoresNonPolipageErrors(t *testing.T) {

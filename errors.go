@@ -12,7 +12,7 @@ import (
 // *polipage.Error queued on c.Errors into a JSON response with a stable
 // shape:
 //
-//	{"code": "...", "message": "...", "requestId": "..."}
+//	{"code": "...", "message": "...", "status": 401, "requestId": "..."}
 //
 // The middleware runs after the handler chain (it issues c.Next() and
 // inspects c.Errors when control returns) and reads c.Errors.Last() —
@@ -27,10 +27,10 @@ import (
 // violating the thin-wrapper stance — same decision the NestJS package
 // made with @Catch(PoliPageError).
 //
-// One transformation: an error that satisfies (*polipage.Error).IsNetworkError
-// (SDK-level network/timeout, with StatusCode 0) collapses to HTTP 502
-// with code "NETWORK_ERROR". 4xx and 5xx responses from the API pass
-// through verbatim.
+// Status and code come from the SDK's canonical Payload: 503 for network
+// failures, 504 for timeouts, the upstream HTTP status otherwise. Code
+// is the API's verbatim code (lowercase for transport, whatever the API
+// returns for 4xx/5xx).
 func ErrorMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Next()
@@ -71,28 +71,15 @@ func WriteError(c *gin.Context, err error) {
 // and WriteError. Kept private so the JSON shape and the
 // AbortWithStatusJSON call live in one place.
 func respondPolipageError(c *gin.Context, pe *polipage.Error) {
-	status, code := mapError(pe)
+	payload := pe.ToPayload()
+	status := payload.Status
+	if status == 0 {
+		status = http.StatusInternalServerError
+	}
 	c.AbortWithStatusJSON(status, gin.H{
-		"code":      code,
-		"message":   pe.Message,
-		"requestId": pe.RequestID,
+		"code":      payload.Code,
+		"message":   payload.Message,
+		"status":    status,
+		"requestId": payload.RequestID,
 	})
 }
-
-// mapError applies the one transformation the integration layers on top
-// of the SDK's *polipage.Error: SDK-level network errors and timeouts
-// collapse to 502 "NETWORK_ERROR". Everything else passes through
-// (auth, rate limit, validation, generic 4xx/5xx).
-func mapError(pe *polipage.Error) (status int, code string) {
-	if pe.IsNetworkError() {
-		return http.StatusBadGateway, networkErrorCode
-	}
-	return pe.StatusCode, pe.Code
-}
-
-// networkErrorCode is the uppercase response code returned when the SDK
-// surfaces a network or timeout failure. Distinct from the lowercase
-// polipage.ErrCodeNetworkError ("network_error") which is the SDK's
-// internal code on the *polipage.Error — the wire code consumers see is
-// uppercase by convention with the API's 4xx/5xx codes.
-const networkErrorCode = "NETWORK_ERROR"
