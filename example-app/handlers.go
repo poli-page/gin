@@ -4,6 +4,8 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/gin-gonic/gin"
 	polipagegin "github.com/poli-page/gin"
@@ -48,6 +50,7 @@ func registerRoutes(r *gin.Engine, assets embed.FS) {
 	api.GET("/render/pdf", renderPDFHandler)
 	api.GET("/render/pdf-stream", renderPDFStreamHandler)
 	api.GET("/render/preview", renderPreviewHandler)
+	api.POST("/render/file", renderFileHandler)
 	api.POST("/documents", postDocumentHandler)
 	api.GET("/documents/:id", getDocumentHandler)
 	api.GET("/documents/:id/preview", getDocumentPreviewHandler)
@@ -85,6 +88,28 @@ func renderPreviewHandler(c *gin.Context) {
 		return
 	}
 	polipagegin.Preview(c, result.HTML)
+}
+
+// renderFileHandler streams a PDF straight to disk via polipage.RenderToFile.
+// Memory-bounded regardless of PDF size — the SDK pipes the body through
+// io.Copy without buffering. Parent directories are created if missing.
+func renderFileHandler(c *gin.Context) {
+	client := polipagegin.ClientFrom(c)
+	path := filepath.Join("output", "welcome.pdf")
+	if err := polipage.RenderToFile(c.Request.Context(), client, demoInput(), path); err != nil {
+		_ = c.Error(err)
+		return
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		_ = c.Error(err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"path":      path,
+		"sizeBytes": info.Size(),
+	})
 }
 
 func postDocumentHandler(c *gin.Context) {

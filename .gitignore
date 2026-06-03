@@ -4,6 +4,7 @@
 coverage.*
 /cmd/polipage-render/polipage-render
 /example-app/example-app
+/example-app/output/
 
 # Go workspace files (kept out of integration repo per spec §12)
 go.work

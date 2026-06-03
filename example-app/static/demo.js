@@ -162,6 +162,11 @@
       renderJson(target, r.status, body || '"(204 No Content)"', 'delete');
       if (r.ok) setDocId(null);
     },
+    'render-file': async target => {
+      const r = await fetch('/api/render/file', { method: 'POST' });
+      const body = await r.text();
+      renderJson(target, r.status, body, 'wrote to disk');
+    },
     'bad-version': async target => {
       const r = await fetch('/api/render/error');
       const body = await r.text();
