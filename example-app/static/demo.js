@@ -106,7 +106,7 @@
       renderBlobIframe(target, blob, 'pdf', `${blob.size.toLocaleString()} bytes`);
     },
     stream: async target => {
-      const r = await fetch('/api/render/pdf-stream');
+      const r = await fetch('/api/render/stream');
       if (!r.ok) return renderError(target, `HTTP ${r.status}`);
       const blob = await r.blob();
       renderBlobIframe(target, blob, 'pdf (stream)', `${blob.size.toLocaleString()} bytes`);

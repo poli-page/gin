@@ -48,7 +48,7 @@ func registerRoutes(r *gin.Engine, assets embed.FS) {
 
 	api := r.Group("/api")
 	api.GET("/render/pdf", renderPDFHandler)
-	api.GET("/render/pdf-stream", renderPDFStreamHandler)
+	api.GET("/render/stream", renderPDFStreamHandler)
 	api.GET("/render/preview", renderPreviewHandler)
 	api.POST("/render/file", renderFileHandler)
 	api.POST("/documents", postDocumentHandler)

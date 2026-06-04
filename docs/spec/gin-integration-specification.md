@@ -583,7 +583,7 @@ One handler per SDK demo step:
 |---|---|---|
 | `GET /` | — | `c.FileFromFS("templates/demo.html", ...)` |
 | `GET /api/render/pdf` | `Render.PDF` | `polipagegin.PDF` |
-| `GET /api/render/pdf-stream` | `Render.PDFStream` | `polipagegin.PDFStream` |
+| `GET /api/render/stream` | `Render.PDFStream` | `polipagegin.PDFStream` |
 | `GET /api/render/preview` | `Render.Preview` | `polipagegin.Preview` |
 | `POST /api/documents` | `Render.Document` | JSON of `{documentId, expiresAt}` |
 | `GET /api/documents/:id` | `Documents.Get` | `polipagegin.DocumentRedirect` |
