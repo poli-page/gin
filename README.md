@@ -108,7 +108,7 @@ You either construct the SDK client yourself with `option.With*` and pass it to 
 | Variable | Default | Description |
 |---|---|---|
 | `POLI_PAGE_API_KEY` | _required_ | Key starting with `pp_test_` or `pp_live_`. |
-| `POLI_PAGE_BASE_URL` | SDK default | Override the API origin (e.g. `https://api-develop.poli.page`). |
+| `POLI_PAGE_BASE_URL` | SDK default | Override the API origin. |
 | `POLI_PAGE_TIMEOUT` | SDK default | Per-request timeout, parsed by `time.ParseDuration` (`30s`, `2m`). |
 | `POLI_PAGE_MAX_RETRIES` | SDK default | Integer in `[0, 10]`. |
 | `POLI_PAGE_RETRY_DELAY` | SDK default | Base retry delay, parsed by `time.ParseDuration`. |

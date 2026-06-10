@@ -33,7 +33,7 @@ func setEnv(t *testing.T, overrides map[string]string) {
 func TestFromEnv_AllValidVariables(t *testing.T) {
 	setEnv(t, map[string]string{
 		"POLI_PAGE_API_KEY":     "pp_test_abc123",
-		"POLI_PAGE_BASE_URL":    "https://api-develop.poli.page",
+		"POLI_PAGE_BASE_URL":    "https://api.example.com",
 		"POLI_PAGE_TIMEOUT":     "30s",
 		"POLI_PAGE_MAX_RETRIES": "5",
 		"POLI_PAGE_RETRY_DELAY": "1s",
@@ -43,7 +43,7 @@ func TestFromEnv_AllValidVariables(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "pp_test_abc123", cfg.APIKey)
-	assert.Equal(t, "https://api-develop.poli.page", cfg.BaseURL)
+	assert.Equal(t, "https://api.example.com", cfg.BaseURL)
 	assert.Equal(t, 30*time.Second, cfg.Timeout)
 	assert.Equal(t, 5, cfg.MaxRetries)
 	assert.Equal(t, time.Second, cfg.RetryDelay)

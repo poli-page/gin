@@ -100,7 +100,7 @@ jobs:
         working-directory: gin
         env:
           POLI_PAGE_API_KEY: ${{ secrets.POLI_PAGE_API_KEY }}
-          POLI_PAGE_BASE_URL: https://api-develop.poli.page
+          POLI_PAGE_TEST_BASE_URL: ${{ secrets.POLI_PAGE_TEST_BASE_URL }}
         run: |
           if [ -z "$POLI_PAGE_API_KEY" ]; then
             echo "POLI_PAGE_API_KEY not set; skipping integration test"
@@ -115,7 +115,7 @@ jobs:
         working-directory: gin
         env:
           POLI_PAGE_API_KEY: ${{ secrets.POLI_PAGE_API_KEY }}
-          POLI_PAGE_BASE_URL: https://api-develop.poli.page
+          POLI_PAGE_BASE_URL: ${{ secrets.POLI_PAGE_TEST_BASE_URL }}
         run: |
           if [ -z "$POLI_PAGE_API_KEY" ]; then
             echo "POLI_PAGE_API_KEY not set; skipping CLI smoke"

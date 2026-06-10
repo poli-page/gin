@@ -183,7 +183,6 @@ func TestRenderAgainstDevelopAPI(t *testing.T) {
 
 	client := polipage.NewClient(
 		option.WithAPIKey(key),
-		option.WithBaseURL("https://api-develop.poli.page"),
 		option.WithTimeout(30*time.Second),
 	)
 
@@ -219,7 +218,7 @@ Run with `go test -tags=integration ./tests/integration/...`. The test proves DI
 
 - **The narrow interface goes in your app, not in this package.** Don't open a PR adding `Renderer interface{ PDF(...); PDFStream(...); ... }` here — that would be the Big Generic Interface this package explicitly does not ship (CLAUDE.md §2). Every consumer's domain interface is different.
 
-- **Integration tests need a `pp_test_*` key, not `pp_live_*`.** The smoke test renders against `api-develop.poli.page`; a live key talks to production and bills your account. CI passes the test key via repository secrets.
+- **Integration tests need a `pp_test_*` key, not `pp_live_*`.** A live key talks to production and bills your account. CI passes the test key via repository secrets.
 
 ## Related
 

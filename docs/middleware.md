@@ -58,23 +58,22 @@ func invoiceHandler(c *gin.Context) {
 
 ### Per-route or per-group clients
 
-You can install a second middleware on a sub-group with a different client (different API key, different base URL, different `onRetry` callback). The sub-group's `Use` runs after the global one and the second `c.Set` overwrites the first for the duration of the request.
+You can install a second middleware on a sub-group with a different client (different API key, different `onRetry` callback). The sub-group's `Use` runs after the global one and the second `c.Set` overwrites the first for the duration of the request.
 
 ```go
 // main.go
-sandbox := polipage.NewClient(
-	option.WithAPIKey(os.Getenv("POLI_PAGE_SANDBOX_KEY")),
-	option.WithBaseURL("https://api-develop.poli.page"),
+secondary := polipage.NewClient(
+	option.WithAPIKey(os.Getenv("POLI_PAGE_SECONDARY_KEY")),
 )
 
-r.Use(polipagegin.Middleware(prodClient))
+r.Use(polipagegin.Middleware(primaryClient))
 
 dev := r.Group("/dev")
-dev.Use(polipagegin.Middleware(sandbox))
-dev.GET("/preview", previewHandler) // sees sandbox
+dev.Use(polipagegin.Middleware(secondary))
+dev.GET("/preview", previewHandler) // sees secondary
 ```
 
-Inside `previewHandler`, `polipagegin.ClientFrom(c)` returns the sandbox client; everywhere else it returns prod.
+Inside `previewHandler`, `polipagegin.ClientFrom(c)` returns the secondary client; everywhere else it returns the primary one.
 
 ### Request-scoped context
 

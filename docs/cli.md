@@ -52,14 +52,6 @@ polipage-render \
 
 Inline mode renders via `Render.Preview` and writes the HTML output; the SDK does not support PDF rendering from a raw `--inline-template` (only project-mode inputs can produce PDFs). Use `--project` + `--template` for a PDF.
 
-### Use the develop API
-
-```bash
-POLI_PAGE_BASE_URL=https://api-develop.poli.page \
-polipage-render --project=getting-started --template=welcome \
-    --template-version=1.0.0 --data='{"name":"World"}' -o welcome.pdf
-```
-
 ## Flags
 
 | Flag | Required | Description |
@@ -112,7 +104,6 @@ GitHub Actions step that smoke-tests every push:
   if: env.POLI_PAGE_API_KEY != ''
   env:
     POLI_PAGE_API_KEY: ${{ secrets.POLI_PAGE_API_KEY }}
-    POLI_PAGE_BASE_URL: https://api-develop.poli.page
   run: |
     go run ./cmd/polipage-render \
         --project=getting-started \

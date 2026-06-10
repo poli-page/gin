@@ -14,7 +14,7 @@ import (
 
 // Demo fixtures shared by all render handlers. The "getting-started"
 // project + "welcome" template at version 1.0.0 is the canonical demo
-// content on api-develop.poli.page.
+// content.
 const (
 	demoProject  = "getting-started"
 	demoTemplate = "welcome"

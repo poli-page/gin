@@ -17,3 +17,6 @@ go.work.sum
 
 # OS
 .DS_Store
+CLAUDE.md
+docs/plan/
+docs/spec/

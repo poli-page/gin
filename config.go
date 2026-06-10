@@ -24,7 +24,7 @@ type Config struct {
 	// APIKey is the Poli Page API key. Required; must begin with
 	// "pp_test_" or "pp_live_".
 	APIKey string
-	// BaseURL overrides the API base URL (useful for api-develop.poli.page).
+	// BaseURL overrides the API base URL.
 	// Must be an http:// or https:// URL when set.
 	BaseURL string
 	// Timeout is the per-request deadline applied when the caller's

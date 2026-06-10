@@ -1,9 +1,8 @@
 //go:build integration
 
-// Package integration holds the gated integration test that talks to a
-// real Poli Page API instance (api-develop.poli.page by default). Behind
-// the //go:build integration tag so the full test suite (`go test ./...`)
-// never touches the network. Spec §13.3.
+// Package integration holds the gated integration test that talks to the
+// live Poli Page API. Behind the //go:build integration tag so the full
+// test suite (`go test ./...`) never touches the network.
 package integration
 
 import (
@@ -16,9 +15,9 @@ import (
 	"github.com/poli-page/sdk-go/option"
 )
 
-// TestRenderAgainstDevelopAPI is the v0.1.0 smoke test: a pp_test_* key
-// renders the "getting-started/welcome" template against the develop
-// API and asserts a non-empty PDF comes back. Proves end-to-end wiring
+// TestRenderAgainstLiveAPI is the v0.1.0 smoke test: a pp_test_* key
+// renders the "getting-started/welcome" template against the live API
+// and asserts a non-empty PDF comes back. Proves end-to-end wiring
 // without re-testing anything the SDK contract suite already covers.
 //
 // Skipped (NOT failed) when POLI_PAGE_API_KEY is unset, so PRs from
@@ -27,24 +26,23 @@ import (
 // Run locally:
 //
 //	POLI_PAGE_API_KEY=pp_test_... \
-//	POLI_PAGE_BASE_URL=https://api-develop.poli.page \
 //	go test -tags=integration ./tests/integration/...
-func TestRenderAgainstDevelopAPI(t *testing.T) {
+//
+// Set POLI_PAGE_TEST_BASE_URL to override the SDK's default API host.
+func TestRenderAgainstLiveAPI(t *testing.T) {
 	key := os.Getenv("POLI_PAGE_API_KEY")
 	if key == "" {
 		t.Skip("POLI_PAGE_API_KEY not set; skipping integration test")
 	}
 
-	baseURL := os.Getenv("POLI_PAGE_BASE_URL")
-	if baseURL == "" {
-		baseURL = "https://api-develop.poli.page"
-	}
-
-	client := polipage.NewClient(
+	opts := []option.RequestOption{
 		option.WithAPIKey(key),
-		option.WithBaseURL(baseURL),
-		option.WithTimeout(30*time.Second),
-	)
+		option.WithTimeout(30 * time.Second),
+	}
+	if v := os.Getenv("POLI_PAGE_TEST_BASE_URL"); v != "" {
+		opts = append(opts, option.WithBaseURL(v))
+	}
+	client := polipage.NewClient(opts...)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
