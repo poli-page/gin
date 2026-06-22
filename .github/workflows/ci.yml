@@ -55,15 +55,22 @@ jobs:
           else
             echo "Skipping vet: no go.mod yet"
           fi
-      - name: Lint
+      - name: Check for golangci config
+        id: golangci_config
         working-directory: gin
         run: |
           if [ -f .golangci.yml ]; then
-            curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
-            $(go env GOPATH)/bin/golangci-lint run
+            echo "present=true" >> "$GITHUB_OUTPUT"
           else
+            echo "present=false" >> "$GITHUB_OUTPUT"
             echo "Skipping lint: no .golangci.yml yet"
           fi
+      - name: Lint
+        if: steps.golangci_config.outputs.present == 'true'
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+          working-directory: gin
       - name: Unit tests (race)
         working-directory: gin
         run: |
