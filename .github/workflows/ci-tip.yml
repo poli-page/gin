@@ -1,0 +1,78 @@
+name: CI (Go tip)
+
+# Early-warning coverage against the unreleased Go toolchain. Kept out of the
+# push/PR CI on purpose: a Go-tip break is upstream news, not a reason to red a
+# commit. Runs nightly and on demand; check it when it goes red.
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  test-tip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: gin
+      - uses: actions/checkout@v4
+        with:
+          repository: poli-page/sdk-go
+          path: sdk-go
+          ref: main
+      # setup-go cannot resolve a literal "tip"; bootstrap with stable, then
+      # install the toolchain via golang.org/dl/gotip and put its `go` on PATH
+      # so every step below runs under tip without per-step rewrites.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+          cache: false
+      - name: Install Go tip
+        run: |
+          go install golang.org/dl/gotip@latest
+          gotip download
+          echo "$HOME/sdk/gotip/bin" >> "$GITHUB_PATH"
+      - name: Go version
+        working-directory: gin
+        run: go version
+      - name: Pin Gin version
+        working-directory: gin
+        run: |
+          if [ -f go.mod ]; then
+            go get github.com/gin-gonic/gin@v1.10.0
+            go mod tidy
+          else
+            echo "Skipping pin: no go.mod yet"
+          fi
+      - name: Format check
+        working-directory: gin
+        run: |
+          if [ -f go.mod ]; then
+            test -z "$(gofmt -l .)" || (gofmt -d .; exit 1)
+          else
+            echo "Skipping gofmt: no go.mod yet"
+          fi
+      - name: Vet
+        working-directory: gin
+        run: |
+          if [ -f go.mod ]; then
+            go vet ./...
+          else
+            echo "Skipping vet: no go.mod yet"
+          fi
+      - name: Unit tests (race)
+        working-directory: gin
+        run: |
+          if [ -f go.mod ]; then
+            go test -race -count=1 ./...
+          else
+            echo "Skipping tests: no go.mod yet"
+          fi
+      - name: Build
+        working-directory: gin
+        run: |
+          if [ -f go.mod ]; then
+            go build ./...
+          else
+            echo "Skipping build: no go.mod yet"
+          fi

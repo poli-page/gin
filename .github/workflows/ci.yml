@@ -12,11 +12,6 @@ jobs:
       matrix:
         go: ['1.25']
         gin: ['v1.9.1', 'v1.10.0']
-        include:
-          - go: 'tip'
-            gin: 'v1.10.0'
-            experimental: true
-    continue-on-error: ${{ matrix.experimental == true }}
     steps:
       - uses: actions/checkout@v4
         with:
