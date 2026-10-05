@@ -55,7 +55,7 @@ reviews:
     - path: "*.go"
       instructions: >-
         Root package is a Gin integration wrapping the poli-page Go SDK. Keep the public API small and
-        consistent with the other poli-page SDKs and the API spec (errors are `{ error: { code } }`).
+        consistent with the other poli-page SDKs and the API spec (errors are `{ error: CODE_STRING, detail?, issues? } (flat, API spec §4.1)`).
         No breaking changes to exported identifiers without a major version. Idiomatic Go: wrap errors
         with %w, never swallow them, pass context through *gin.Context, no package-level client singleton.
     - path: "**/*_test.go"
