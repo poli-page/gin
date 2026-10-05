@@ -10,7 +10,8 @@ import (
 const defaultDownloadFilename = "document.pdf"
 
 // contentDisposition builds a Content-Disposition header value per RFC 6266.
-// The result has two slots:
+// Control characters are stripped from filename first (see stripControlChars),
+// so neither slot carries them. The result has two slots:
 //
 //   - an ASCII filename="..." slot for legacy User-Agents that do not speak
 //     RFC 5987 (the asciiFallback output, with backslashes and quotes
@@ -21,6 +22,7 @@ const defaultDownloadFilename = "document.pdf"
 // inline picks the "inline" disposition (the UA may render the resource
 // in-place, e.g. inside an <iframe>); false picks "attachment" (download).
 func contentDisposition(filename string, inline bool) string {
+	filename = stripControlChars(filename)
 	if filename == "" {
 		filename = defaultDownloadFilename
 	}
@@ -30,6 +32,18 @@ func contentDisposition(filename string, inline bool) string {
 	}
 	return disposition + `; filename="` + asciiFallback(filename) +
 		`"; filename*=UTF-8''` + rfc5987Encode(filename)
+}
+
+// stripControlChars removes C0 controls (including TAB, CR and LF), DEL and
+// C1 controls. None of them belong in a filename, and CR/LF would split the
+// header (response splitting) if they ever reached it unencoded.
+func stripControlChars(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || (r >= 0x7F && r <= 0x9F) {
+			return -1
+		}
+		return r
+	}, s)
 }
 
 // asciiFallback returns the body of the ASCII filename="..." slot — that

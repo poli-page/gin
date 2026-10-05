@@ -4,6 +4,9 @@ All notable changes to `poli-page/gin` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+### Fixed
+- `PDF` / `PDFStream`: control characters (CR/LF, TAB, DEL, C1) are now stripped from the `Content-Disposition` filename instead of surviving as `_` in the ASCII slot and `%0D%0A`-style escapes in the `filename*` slot; a filename made only of control characters falls back to `document.pdf`.
+
 ## [0.1.0] — 2026-06-01
 
 ### Added
