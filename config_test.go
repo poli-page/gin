@@ -147,6 +147,11 @@ func TestFromEnv_MalformedKeyLoadsWithOneWarningWithoutTheSecret(t *testing.T) {
 		{"21-character environment", "pp_" + strings.Repeat("a", 21) + "_" + keySecret, keySecret},
 		{"secret in the environment slot", "pp_" + keySecret + "_" + keySecret, keySecret},
 		{"non-pp_ token", "sk_live_" + keySecret, keySecret},
+		{"31-hex secret", "pp_sandbox_" + keySecret[:31], keySecret[:31]},
+		{"33-hex secret", "pp_sandbox_" + keySecret + "0", keySecret + "0"},
+		{"uppercase secret", "pp_sandbox_" + strings.ToUpper(keySecret), strings.ToUpper(keySecret)},
+		{"trailing character", sandboxKey + "x", keySecret + "x"},
+		{"leading character", "x" + sandboxKey, keySecret},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			setEnv(t, map[string]string{"POLI_PAGE_API_KEY": tc.key})

@@ -85,12 +85,23 @@ func TestRenderDemos_SendNoVersion(t *testing.T) {
 	}, gotBody)
 }
 
+// The fake API fails the test when called, so only gin's own unmatched-route
+// 404 passes, never an upstream 404 relayed by ErrorMiddleware.
 func TestRemovedDemoRoutes_AreGone(t *testing.T) {
-	r := newDemoServer(t, http.NotFoundHandler())
-	for _, path := range []string{"/api/render/preview", "/api/render/error"} {
+	removed := []string{"/api/render/preview", "/api/render/error"}
+	r := newDemoServer(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		t.Errorf("fake API called for %s %s", req.Method, req.URL.Path)
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	for _, route := range r.Routes() {
+		assert.NotContains(t, removed, route.Path, "%s %s is registered", route.Method, route.Path)
+	}
+	for _, path := range removed {
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, http.NoBody))
 		assert.Equal(t, http.StatusNotFound, w.Code, path)
+		assert.Equal(t, "404 page not found", w.Body.String(), path)
 	}
 }
 
