@@ -4,6 +4,16 @@ All notable changes to `poli-page/gin` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+### Changed
+- **Breaking:** API keys are `pp_{environment}_{32 lowercase hex}` for any environment (`pp_sandbox_…`, `pp_live_…`, `pp_staging_…`). `FromEnv` no longer rejects a key by its `pp_test_` / `pp_live_` prefix: a missing or empty `POLI_PAGE_API_KEY` is still an error, and any other value that does not match the key format logs one `log/slog` warning (showing at most its `pp_{environment}_` part, never the secret) and loads, so the API answers with its own error.
+- **Breaking:** builds against `github.com/poli-page/sdk-go` with environments: renders take a `polipage.RenderInput` with no `Version`, and the key selects the environment whose published copy is rendered. Both `go.mod` files require the SDK module instead of a `replace` to a sibling `../sdk-go` checkout.
+- Example app: `GET /api/errors/not-found` replaces `GET /api/render/error`. It renders the `does-not-exist` template of `getting-started` with `{}` and answers `404` with code `TEMPLATE_NOT_FOUND` through `ErrorMiddleware`.
+- The integration test skips unless `POLI_PAGE_API_KEY` is a `pp_sandbox_…` key.
+
+### Removed
+- **Breaking:** `polipage-render --template-version` and `--inline-template` (and with them the HTML output of inline mode). `--project` and `--template` are both required.
+- Example app: `GET /api/render/preview` and its dashboard button, since the SDK no longer has `Render.Preview`. `GET /api/documents/:id/preview` (`Documents.Preview`) stays.
+
 ### Fixed
 - `PDF` / `PDFStream`: control characters (CR/LF, TAB, DEL, C1) are now stripped from the `Content-Disposition` filename instead of surviving as `_` in the ASCII slot and `%0D%0A`-style escapes in the `filename*` slot; a filename made only of control characters falls back to `document.pdf`.
 

@@ -13,19 +13,21 @@ import (
 )
 
 // Demo fixtures shared by all render handlers. The "getting-started"
-// project + "welcome" template at version 1.0.0 is the canonical demo
-// content.
+// project + "welcome" template, provisioned into every organization's
+// sandbox environment, is the canonical demo content; the API key
+// selects the environment.
 const (
 	demoProject  = "getting-started"
 	demoTemplate = "welcome"
-	demoVersion  = "1.0.0"
+	// missingTemplate is the template slug every Poli Page demo renders
+	// to show a 404 TEMPLATE_NOT_FOUND.
+	missingTemplate = "does-not-exist"
 )
 
-func demoInput() polipage.ProjectModeInput {
-	return polipage.ProjectModeInput{
+func demoInput() polipage.RenderInput {
+	return polipage.RenderInput{
 		Project:  demoProject,
 		Template: demoTemplate,
-		Version:  polipage.Opt(demoVersion),
 		Data:     map[string]any{"name": "demo"},
 	}
 }
@@ -49,14 +51,13 @@ func registerRoutes(r *gin.Engine, assets embed.FS) {
 	api := r.Group("/api")
 	api.GET("/render/pdf", renderPDFHandler)
 	api.GET("/render/stream", renderPDFStreamHandler)
-	api.GET("/render/preview", renderPreviewHandler)
 	api.POST("/render/file", renderFileHandler)
 	api.POST("/documents", postDocumentHandler)
 	api.GET("/documents/:id", getDocumentHandler)
 	api.GET("/documents/:id/preview", getDocumentPreviewHandler)
 	api.GET("/documents/:id/thumbnails", getDocumentThumbnailsHandler)
 	api.DELETE("/documents/:id", deleteDocumentHandler)
-	api.GET("/render/error", renderErrorHandler)
+	api.GET("/errors/not-found", notFoundErrorHandler)
 }
 
 func renderPDFHandler(c *gin.Context) {
@@ -78,16 +79,6 @@ func renderPDFStreamHandler(c *gin.Context) {
 	}
 	defer func() { _ = body.Close() }()
 	polipagegin.PDFStream(c, body, polipagegin.PDFOptions{Filename: "welcome.pdf", Inline: true})
-}
-
-func renderPreviewHandler(c *gin.Context) {
-	client := polipagegin.ClientFrom(c)
-	result, err := client.Render.Preview(c.Request.Context(), demoInput())
-	if err != nil {
-		_ = c.Error(err)
-		return
-	}
-	polipagegin.Preview(c, result.HTML)
 }
 
 // renderFileHandler streams a PDF straight to disk via polipage.RenderToFile.
@@ -166,18 +157,20 @@ func deleteDocumentHandler(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// renderErrorHandler triggers a deliberate validation error so the
-// caller can exercise ErrorMiddleware end-to-end. An invalid semver
-// version surfaces from the API as VALIDATION_ERROR / 400; the
-// middleware maps it to a JSON {code, message, requestId} response.
-func renderErrorHandler(c *gin.Context) {
+// notFoundErrorHandler renders a template that does not exist so the
+// caller can exercise ErrorMiddleware end-to-end. The API answers
+// 404 TEMPLATE_NOT_FOUND; the middleware maps it to a JSON
+// {code, status, message, requestId} response.
+func notFoundErrorHandler(c *gin.Context) {
 	client := polipagegin.ClientFrom(c)
-	badInput := demoInput()
-	badInput.Version = polipage.Opt("not-a-semver-version")
-	_, err := client.Render.PDF(c.Request.Context(), badInput)
+	_, err := client.Render.PDF(c.Request.Context(), polipage.RenderInput{
+		Project:  demoProject,
+		Template: missingTemplate,
+		Data:     map[string]any{},
+	})
 	if err != nil {
 		_ = c.Error(err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"unexpected": "no error returned from deliberately bad version"})
+	c.JSON(http.StatusOK, gin.H{"unexpected": "no error returned for template " + missingTemplate})
 }

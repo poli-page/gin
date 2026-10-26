@@ -26,15 +26,14 @@
     <div class="head">
       <h2>Render <span class="label">01 · instant</span></h2>
       <p class="desc">
-        Three SDK entry points for rendering the <code>getting-started/welcome</code> template:
-        binary PDF (<code>Render.PDF</code>), streamed PDF (<code>Render.PDFStream</code>),
-        and HTML preview (<code>Render.Preview</code>).
+        Two SDK entry points for rendering the <code>getting-started/welcome</code> template
+        in the API key's environment: binary PDF (<code>Render.PDF</code>) and streamed PDF
+        (<code>Render.PDFStream</code>).
       </p>
     </div>
     <div class="actions">
       <button class="run" data-action="pdf"     data-target="r1">Render PDF</button>
       <button class="run" data-action="stream"  data-target="r1">Via stream</button>
-      <button class="run" data-action="preview" data-target="r1">HTML preview</button>
     </div>
     <div class="result" id="r1">
       <div class="pane-label"><span>output</span><span class="meta">idle</span></div>
@@ -88,13 +87,13 @@
     <div class="head">
       <h2>Error handling <span class="label">04 · typed exceptions</span></h2>
       <p class="desc">
-        Sends a deliberately malformed version string to trigger
-        <code>INVALID_VERSION_FORMAT</code>. The integration's <code>ErrorMiddleware</code>
-        propagates the API code, message, and request-id straight through as JSON.
+        Renders the <code>does-not-exist</code> template of <code>getting-started</code> to trigger
+        <code>404 TEMPLATE_NOT_FOUND</code>. The integration's <code>ErrorMiddleware</code>
+        propagates the API code, status, message, and request-id straight through as JSON.
       </p>
     </div>
     <div class="actions">
-      <button class="run" data-action="bad-version" data-target="r4">Trigger 400</button>
+      <button class="run" data-action="not-found" data-target="r4">Trigger 404</button>
     </div>
     <div class="result" id="r4">
       <div class="pane-label"><span>output</span><span class="meta">idle</span></div>
@@ -112,9 +111,9 @@
       </p>
     </div>
     <div class="cli">
-      <button class="copy" data-copy="go run ./cmd/polipage-render --project=getting-started --template=welcome --template-version=1.0.0 --data='{&quot;name&quot;:&quot;world&quot;}' -o /tmp/welcome.pdf">Copy</button>
+      <button class="copy" data-copy="go run ./cmd/polipage-render --project=getting-started --template=welcome --data='{&quot;name&quot;:&quot;world&quot;}' -o /tmp/welcome.pdf">Copy</button>
       <span class="prompt">$</span>go run ./cmd/polipage-render --project=getting-started \
-        --template=welcome --template-version=1.0.0 \
+        --template=welcome \
         --data='{"name":"world"}' -o /tmp/welcome.pdf
     </div>
     <div class="cli">

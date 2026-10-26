@@ -130,7 +130,6 @@ jobs:
           go run ./cmd/polipage-render \
               --project=getting-started \
               --template=welcome \
-              --template-version=1.0.0 \
               --data='{"name":"ci"}' \
               -o /tmp/welcome.pdf
           test -s /tmp/welcome.pdf

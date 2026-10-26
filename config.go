@@ -3,10 +3,11 @@ package polipagegin
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/poli-page/sdk-go/option"
@@ -21,8 +22,9 @@ import (
 // option.With* call so polipage.NewClient applies its own defaults
 // (DefaultMaxRetries, DefaultRetryDelay, etc.).
 type Config struct {
-	// APIKey is the Poli Page API key. Required; must begin with
-	// "pp_test_" or "pp_live_".
+	// APIKey is the Poli Page API key, pp_{environment}_{32 lowercase hex}
+	// (pp_sandbox_…, pp_live_…, pp_staging_…). Required and non-empty; any
+	// other value is accepted, because the API is the only authority on keys.
 	APIKey string
 	// BaseURL overrides the API base URL.
 	// Must be an http:// or https:// URL when set.
@@ -61,14 +63,25 @@ const (
 	envMaxRetries = "POLI_PAGE_MAX_RETRIES"
 	envRetryDelay = "POLI_PAGE_RETRY_DELAY"
 
-	apiKeyPrefixTest = "pp_test_"
-	apiKeyPrefixLive = "pp_live_"
+	// envNameMaxLen is the longest environment name the API issues keys for.
+	envNameMaxLen = 20
 
 	timeoutMax    = 10 * time.Minute
 	retryDelayMax = 30 * time.Second
 	maxRetriesMin = 0
 	maxRetriesMax = 10
 )
+
+// apiKeyPattern is the SDK contract's full-key regex
+// ^pp_(?=[a-z][a-z0-9-]{0,19}_)[a-z][a-z0-9]*(?:-[a-z0-9]+)*_[0-9a-f]{32}$
+// without its lookahead, which RE2 does not support: wellFormedAPIKey
+// checks the captured environment name against envNameMaxLen instead.
+var apiKeyPattern = regexp.MustCompile(`^pp_([a-z][a-z0-9]*(?:-[a-z0-9]+)*)_[0-9a-f]{32}$`)
+
+// apiKeyEnvPrefix matches the pp_{env}_ part of a key, the most of a key
+// that may be logged: the secret follows it. An {env} longer than any
+// environment name is not shown, since it may be the secret itself.
+var apiKeyEnvPrefix = regexp.MustCompile(fmt.Sprintf(`^pp_[^_]{1,%d}_`, envNameMaxLen))
 
 // FromEnv loads Config from the documented POLI_PAGE_* environment
 // variables, validating each one. On failure the returned error wraps
@@ -120,14 +133,24 @@ func parseAPIKey(cfg *Config) error {
 	if !ok || v == "" {
 		return fmt.Errorf("%w: %s is required", ErrInvalidConfig, envAPIKey)
 	}
-	if !strings.HasPrefix(v, apiKeyPrefixTest) && !strings.HasPrefix(v, apiKeyPrefixLive) {
-		return fmt.Errorf(
-			"%w: %s must begin with %q or %q",
-			ErrInvalidConfig, envAPIKey, apiKeyPrefixTest, apiKeyPrefixLive,
+	if !wellFormedAPIKey(v) {
+		prefix := "none"
+		if p := apiKeyEnvPrefix.FindString(v); p != "" {
+			prefix = p + "…"
+		}
+		slog.Warn(
+			"polipagegin: "+envAPIKey+" does not match pp_{environment}_{32 lowercase hex}; "+
+				"starting anyway, the Poli Page API decides whether the key is valid",
+			"keyPrefix", prefix,
 		)
 	}
 	cfg.APIKey = v
 	return nil
+}
+
+func wellFormedAPIKey(key string) bool {
+	m := apiKeyPattern.FindStringSubmatch(key)
+	return len(m) == 2 && len(m[1]) <= envNameMaxLen
 }
 
 func parseBaseURL(cfg *Config) error {

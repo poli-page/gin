@@ -32,8 +32,18 @@ go get github.com/poli-page/gin
 Set your key in the environment:
 
 ```
-POLI_PAGE_API_KEY=pp_test_your_key_here
+POLI_PAGE_API_KEY=pp_sandbox_your_key_here
 ```
+
+An API key is `pp_{environment}_{32 lowercase hex}`. It belongs to one environment of your organization, and that environment's published copy of the project is the one rendered:
+
+| Environment                           | Key            | Watermark | Counted |
+| ------------------------------------- | -------------- | --------- | ------- |
+| `sandbox` (every org)                 | `pp_sandbox_…` | yes       | no      |
+| `live` (every org, deletable on Pro+) | `pp_live_…`    | no        | yes     |
+| created on Pro+ (e.g. `staging`)      | `pp_staging_…` | no        | yes     |
+
+"Counted" means the render counts toward the organization's monthly PDF quota.
 
 Verify everything is wired end-to-end with the bundled smoke-test binary:
 
@@ -41,7 +51,6 @@ Verify everything is wired end-to-end with the bundled smoke-test binary:
 go run github.com/poli-page/gin/cmd/polipage-render \
     --project=getting-started \
     --template=welcome \
-    --template-version=1.0.0 \
     --data='{"name":"World"}' \
     -o welcome.pdf
 ```
@@ -82,10 +91,9 @@ func invoiceHandler(c *gin.Context) {
 	id := c.Param("id")
 	client := polipagegin.ClientFrom(c)
 
-	pdf, err := client.Render.PDF(c.Request.Context(), polipage.ProjectModeInput{
+	pdf, err := client.Render.PDF(c.Request.Context(), polipage.RenderInput{
 		Project:  "billing",
 		Template: "invoice",
-		Version:  polipage.Opt("1.0.0"),
 		Data:     map[string]any{"invoiceId": id},
 	})
 	if err != nil {
@@ -107,7 +115,7 @@ You either construct the SDK client yourself with `option.With*` and pass it to 
 
 | Variable | Default | Description |
 |---|---|---|
-| `POLI_PAGE_API_KEY` | _required_ | Key starting with `pp_test_` or `pp_live_`. |
+| `POLI_PAGE_API_KEY` | _required_ | Your API key, `pp_{environment}_…` (see the key table above). A missing or empty value is an error. Any other value is accepted: one that does not match `pp_{environment}_{32 lowercase hex}` logs one `log/slog` warning (showing at most its `pp_{environment}_` part, never the secret) and the API decides whether the key is valid (`401 INVALID_API_KEY`). |
 | `POLI_PAGE_BASE_URL` | SDK default | Override the API origin. |
 | `POLI_PAGE_TIMEOUT` | SDK default | Per-request timeout, parsed by `time.ParseDuration` (`30s`, `2m`). |
 | `POLI_PAGE_MAX_RETRIES` | SDK default | Integer in `[0, 10]`. |
@@ -147,7 +155,7 @@ The SDK returns a single `*polipage.Error` type with predicate methods rather th
 
 - **Auth** — `err.IsAuthError()` (HTTP 401/403, sentinels `polipage.ErrUnauthorized` / `polipage.ErrForbidden`).
 - **Rate limit** — `err.IsRateLimitError()` (HTTP 429, sentinel `polipage.ErrRateLimit`).
-- **Validation** — `err.IsValidationError()` (HTTP 400, sentinel `polipage.ErrValidation`). Template, data, or version rejected.
+- **Validation** — `err.IsValidationError()` (HTTP 400, sentinel `polipage.ErrValidation`). Template or data rejected.
 - **Network / transport** — `err.IsNetworkError()` (connection, DNS, TLS, or timeout).
 
 Handle them inline:
@@ -181,7 +189,7 @@ Or install `polipagegin.ErrorMiddleware()` once and skip the boilerplate — 4xx
 
 ## Example app
 
-A runnable Gin application that exercises every SDK demo step lives in [`example-app/`](example-app/). It serves an interactive dashboard at `http://127.0.0.1:8080/` with one button per SDK feature, inline `<iframe>` previews for PDFs, and pretty-printed JSON for stored-document operations.
+A runnable Gin application that exercises every SDK demo step lives in [`example-app/`](example-app/). It serves an interactive dashboard at `http://127.0.0.1:8080/` with one button per SDK feature, inline `<iframe>` previews for PDFs, and pretty-printed JSON for stored-document operations. It reads `POLI_PAGE_API_KEY` (a `pp_sandbox_…` key) and, optionally, `POLI_PAGE_BASE_URL`, and renders the `getting-started` project's `welcome` template. `GET /api/errors/not-found` renders the `does-not-exist` template and answers `404` with code `TEMPLATE_NOT_FOUND` through `ErrorMiddleware`.
 
 ```bash
 cd example-app

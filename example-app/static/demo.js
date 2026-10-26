@@ -111,12 +111,6 @@
       const blob = await r.blob();
       renderBlobIframe(target, blob, 'pdf (stream)', `${blob.size.toLocaleString()} bytes`);
     },
-    preview: async target => {
-      const r = await fetch('/api/render/preview');
-      const html = await r.text();
-      if (!r.ok) return renderError(target, `HTTP ${r.status}`);
-      renderInlineHtml(target, html, 'html preview', `${html.length.toLocaleString()} chars`);
-    },
     'doc-create': async target => {
       const r = await fetch('/api/documents', { method: 'POST' });
       const body = await r.text();
@@ -167,8 +161,8 @@
       const body = await r.text();
       renderJson(target, r.status, body, 'wrote to disk');
     },
-    'bad-version': async target => {
-      const r = await fetch('/api/render/error');
+    'not-found': async target => {
+      const r = await fetch('/api/errors/not-found');
       const body = await r.text();
       renderJson(target, r.status, body, 'error payload');
     },

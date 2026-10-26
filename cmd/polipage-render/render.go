@@ -20,8 +20,7 @@ import (
 
 // renderRequest is the pure input to render(). Cfg is the resolved
 // polipagegin.Config (env + flag overrides); Input is the SDK render
-// input (polipage.ProjectModeInput or polipage.InlineModeInput); Out
-// is the writer the rendered bytes are streamed into (the -o file or
+// input; Out is the writer the rendered bytes are streamed into (the -o file or
 // stdout, opened by the Cobra adapter in root.go).
 type renderRequest struct {
 	Cfg   polipagegin.Config
@@ -33,37 +32,20 @@ type renderRequest struct {
 // the process exit code per spec §9.3 and an error for diagnostic
 // logging (the caller writes it to stderr).
 //
-// Project mode renders a PDF via Render.PDFStream and streams the body
-// straight into req.Out — no buffering. Inline mode renders an HTML
-// preview via Render.Preview and writes the HTML bytes; inline + PDF
-// is not a thing the SDK supports.
+// The PDF is rendered via Render.PDFStream and the body is streamed
+// straight into req.Out — no buffering.
 func render(ctx context.Context, req renderRequest) (int, error) {
 	client := polipage.NewClient(req.Cfg.Options()...)
 
-	switch in := req.Input.(type) {
-	case polipage.ProjectModeInput:
-		body, err := client.Render.PDFStream(ctx, in)
-		if err != nil {
-			return exitCodeFor(err), err
-		}
-		defer func() { _ = body.Close() }()
-		if _, err := io.Copy(req.Out, body); err != nil {
-			return 4, fmt.Errorf("failed to write PDF output: %w", err)
-		}
-		return 0, nil
-
-	case polipage.InlineModeInput:
-		result, err := client.Render.Preview(ctx, in)
-		if err != nil {
-			return exitCodeFor(err), err
-		}
-		if _, err := io.WriteString(req.Out, result.HTML); err != nil {
-			return 4, fmt.Errorf("failed to write HTML output: %w", err)
-		}
-		return 0, nil
+	body, err := client.Render.PDFStream(ctx, req.Input)
+	if err != nil {
+		return exitCodeFor(err), err
 	}
-
-	return exitMisuse, fmt.Errorf("unknown render input type %T", req.Input)
+	defer func() { _ = body.Close() }()
+	if _, err := io.Copy(req.Out, body); err != nil {
+		return 4, fmt.Errorf("failed to write PDF output: %w", err)
+	}
+	return 0, nil
 }
 
 // exitCodeFor maps an SDK error to the spec §9.3 exit code:

@@ -1,13 +1,61 @@
 package main
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	polipagegin "github.com/poli-page/gin"
 	polipage "github.com/poli-page/sdk-go"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+// TestRender_StreamsThePDFOfTheRenderInput drives render() against a fake
+// API: POST /v1/render answers a descriptor, its presigned URL serves the
+// PDF bytes, which must land in req.Out unchanged.
+func TestRender_StreamsThePDFOfTheRenderInput(t *testing.T) {
+	var gotBody map[string]any
+	mux := http.NewServeMux()
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	mux.HandleFunc("POST /v1/render", func(w http.ResponseWriter, r *http.Request) {
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&gotBody))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"documentId":      "doc_1",
+			"presignedPdfUrl": srv.URL + "/pdf/doc_1",
+		})
+	})
+	mux.HandleFunc("GET /pdf/doc_1", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("%PDF-1.7 welcome"))
+	})
+
+	var out bytes.Buffer
+	code, err := render(context.Background(), renderRequest{
+		Cfg: polipagegin.Config{APIKey: "pp_sandbox_0123456789abcdef0123456789abcdef", BaseURL: srv.URL},
+		Input: polipage.RenderInput{
+			Project:  "getting-started",
+			Template: "welcome",
+			Data:     map[string]any{},
+		},
+		Out: &out,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, code)
+	assert.Equal(t, "%PDF-1.7 welcome", out.String())
+	assert.Equal(t, map[string]any{
+		"project":  "getting-started",
+		"template": "welcome",
+		"data":     map[string]any{},
+	}, gotBody, "the render body names no version")
+}
 
 // TestExitCodeFor is the table-driven version the plan recommends as the
 // "easier option" (Step 8.2): drive the pure exit-code function with

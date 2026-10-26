@@ -18,11 +18,12 @@ import (
 	"context"
 
 	"github.com/poli-page/sdk-go"
+	"github.com/poli-page/sdk-go/option"
 )
 
 // InvoiceRenderer is what InvoiceController needs from the SDK — nothing more.
 type InvoiceRenderer interface {
-	PDF(ctx context.Context, in polipage.ProjectModeInput, opts ...any) ([]byte, error)
+	PDF(ctx context.Context, in polipage.RenderInput, opts ...option.RequestOption) ([]byte, error)
 }
 ```
 
@@ -47,10 +48,9 @@ type InvoiceHandler struct {
 }
 
 func (h *InvoiceHandler) Show(c *gin.Context) {
-	pdf, err := h.Renderer.PDF(c.Request.Context(), polipage.ProjectModeInput{
+	pdf, err := h.Renderer.PDF(c.Request.Context(), polipage.RenderInput{
 		Project:  "billing",
 		Template: "invoice",
-		Version:  polipage.Opt("1.0.0"),
 		Data:     map[string]any{"invoiceId": c.Param("id")},
 	})
 	if err != nil {
@@ -100,6 +100,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/poli-page/sdk-go"
+	"github.com/poli-page/sdk-go/option"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -108,12 +109,12 @@ import (
 
 type fakeRenderer struct {
 	called  bool
-	gotIn   polipage.ProjectModeInput
+	gotIn   polipage.RenderInput
 	wantErr error
 	wantPDF []byte
 }
 
-func (f *fakeRenderer) PDF(_ context.Context, in polipage.ProjectModeInput, _ ...any) ([]byte, error) {
+func (f *fakeRenderer) PDF(_ context.Context, in polipage.RenderInput, _ ...option.RequestOption) ([]byte, error) {
 	f.called = true
 	f.gotIn = in
 	return f.wantPDF, f.wantErr
@@ -153,11 +154,11 @@ func StubClient(t *testing.T, stub *polipage.Client) gin.HandlerFunc {
 }
 ```
 
-But "build a `*polipage.Client` for tests" usually means "make an HTTP call to the real API" — at which point you might as well construct one with a `pp_test_*` key and run it as an integration test gated on `POLI_PAGE_API_KEY`. The narrow-interface pattern above is the better default for unit-level handler tests.
+But "build a `*polipage.Client` for tests" usually means "make an HTTP call to the real API" — at which point you might as well construct one with a `pp_sandbox_…` key and run it as an integration test gated on `POLI_PAGE_API_KEY`. The narrow-interface pattern above is the better default for unit-level handler tests.
 
 ### Integration tests against the develop API
 
-One smoke test per repo. Lives in `tests/integration/` behind a build tag, skips when the env var is unset.
+One smoke test per repo. Lives in `tests/integration/` behind a build tag, skips unless the env var holds a sandbox key.
 
 ```go
 // tests/integration/render_against_develop_test.go
@@ -168,6 +169,7 @@ package integration
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -177,8 +179,8 @@ import (
 
 func TestRenderAgainstDevelopAPI(t *testing.T) {
 	key := os.Getenv("POLI_PAGE_API_KEY")
-	if key == "" {
-		t.Skip("POLI_PAGE_API_KEY not set")
+	if !strings.HasPrefix(key, "pp_sandbox_") {
+		t.Skip("POLI_PAGE_API_KEY is not a pp_sandbox_ key")
 	}
 
 	client := polipage.NewClient(
@@ -189,10 +191,9 @@ func TestRenderAgainstDevelopAPI(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	pdf, err := client.Render.PDF(ctx, polipage.ProjectModeInput{
+	pdf, err := client.Render.PDF(ctx, polipage.RenderInput{
 		Project:  "getting-started",
 		Template: "welcome",
-		Version:  polipage.Opt("1.0.0"),
 		Data:     map[string]any{"name": "ci"},
 	})
 	if err != nil {
@@ -218,7 +219,7 @@ Run with `go test -tags=integration ./tests/integration/...`. The test proves DI
 
 - **The narrow interface goes in your app, not in this package.** Don't open a PR adding `Renderer interface{ PDF(...); PDFStream(...); ... }` here — that would be the Big Generic Interface this package explicitly does not ship (CLAUDE.md §2). Every consumer's domain interface is different.
 
-- **Integration tests need a `pp_test_*` key, not `pp_live_*`.** A live key talks to production and bills your account. CI passes the test key via repository secrets.
+- **Integration tests need a `pp_sandbox_…` key.** Renders with a `pp_live_…` key (or the key of any other environment created on Pro+) count toward your organization's monthly PDF quota; sandbox renders are watermarked and not counted. CI passes the sandbox key via repository secrets.
 
 ## Related
 

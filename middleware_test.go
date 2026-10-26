@@ -15,7 +15,7 @@ import (
 
 func newTestClient(t *testing.T) *polipage.Client {
 	t.Helper()
-	return polipage.NewClient(option.WithAPIKey("pp_test_dummy"))
+	return polipage.NewClient(option.WithAPIKey(sandboxKey))
 }
 
 func TestMiddleware_AttachesClientToContext(t *testing.T) {

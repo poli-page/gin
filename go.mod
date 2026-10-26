@@ -4,7 +4,7 @@ go 1.25
 
 require (
 	github.com/gin-gonic/gin v1.10.0
-	github.com/poli-page/sdk-go v0.0.0-00010101000000-000000000000
+	github.com/poli-page/sdk-go v0.9.1-0.20261026173041-ec93e9a9b617
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.10.0
 )
@@ -41,6 +41,3 @@ require (
 	google.golang.org/protobuf v1.34.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-// Why: SDK not yet published. Remove on SDK v1.0.0 publish.
-replace github.com/poli-page/sdk-go => ../sdk-go

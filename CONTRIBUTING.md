@@ -8,7 +8,7 @@ Thanks for your interest in improving this package. This guide covers setup, tes
 go mod download
 ```
 
-Set `POLI_PAGE_API_KEY` in your environment (a `pp_test_*` key is fine) before running integration tests.
+Set `POLI_PAGE_API_KEY` to a `pp_sandbox_…` key before running integration tests.
 
 ## Tests
 
@@ -30,7 +30,7 @@ Integration tests:
 go test -tags=integration ./tests/integration/...
 ```
 
-Integration tests are skipped when `POLI_PAGE_API_KEY` is unset.
+Integration tests are skipped unless `POLI_PAGE_API_KEY` starts with `pp_sandbox_`, so a key of a counted environment never renders from a test.
 
 ## Lint, vet, build
 

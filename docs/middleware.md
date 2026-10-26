@@ -40,10 +40,9 @@ r.Use(polipagegin.Middleware(client))    // safe to panic from here on
 func invoiceHandler(c *gin.Context) {
 	client := polipagegin.ClientFrom(c)
 
-	pdf, err := client.Render.PDF(c.Request.Context(), polipage.ProjectModeInput{
+	pdf, err := client.Render.PDF(c.Request.Context(), polipage.RenderInput{
 		Project:  "billing",
 		Template: "invoice",
-		Version:  polipage.Opt("1.0.0"),
 		Data:     map[string]any{"invoiceId": c.Param("id")},
 	})
 	if err != nil {

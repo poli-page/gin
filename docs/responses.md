@@ -63,11 +63,11 @@ polipagegin.PDFStream(c, body, polipagegin.PDFOptions{
 
 ### `Preview(c, html)`
 
-Render the HTML preview from `Render.Preview(...).HTML` (or `Documents.Preview(...).HTML`) with the right headers.
+Render a stored document's HTML from `Documents.Preview(...).HTML` with the right headers.
 
 ```go
 // preview_handler.go
-result, err := client.Render.Preview(c.Request.Context(), input)
+result, err := client.Documents.Preview(c.Request.Context(), c.Param("id"))
 if err != nil {
 	polipagegin.WriteError(c, err)
 	return

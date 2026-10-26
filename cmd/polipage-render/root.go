@@ -20,16 +20,14 @@ const exitMisuse = 64
 // separate from renderRequest so tests can drive buildRequest with a
 // constructed flagSet (no need to spin up a Cobra command).
 type flagSet struct {
-	project         string
-	template        string
-	templateVersion string
-	inlineTemplate  string
-	data            string
-	format          string
-	orientation     string
-	locale          string
-	outPath         string
-	timeout         time.Duration
+	project     string
+	template    string
+	data        string
+	format      string
+	orientation string
+	locale      string
+	outPath     string
+	timeout     time.Duration
 }
 
 // exitErr is the typed error RunE returns when the run failed with a
@@ -49,7 +47,7 @@ func newRootCmd() *cobra.Command {
 	var fs flagSet
 	cmd := &cobra.Command{
 		Use:           "polipage-render",
-		Short:         "Render a Poli Page template to PDF (or HTML, for inline templates).",
+		Short:         "Render a Poli Page template to PDF.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -58,10 +56,8 @@ func newRootCmd() *cobra.Command {
 	}
 
 	flags := cmd.Flags()
-	flags.StringVar(&fs.project, "project", "", "Project slug (mutually exclusive with --inline-template)")
-	flags.StringVar(&fs.template, "template", "", "Template slug (required with --project)")
-	flags.StringVar(&fs.templateVersion, "template-version", "", "Template version, semver (required with --project)")
-	flags.StringVar(&fs.inlineTemplate, "inline-template", "", "Inline HTML template body (mutually exclusive with --project)")
+	flags.StringVar(&fs.project, "project", "", "Project slug (required)")
+	flags.StringVar(&fs.template, "template", "", "Template slug (required)")
 	flags.StringVar(&fs.data, "data", "", "JSON object passed to the template (required)")
 	flags.StringVar(&fs.format, "format", "", "Page format (A4, Letter, Legal, ...). SDK default applies otherwise.")
 	flags.StringVar(&fs.orientation, "orientation", "", "Page orientation: portrait or landscape")
@@ -127,43 +123,23 @@ func buildRequest(fs *flagSet, out io.Writer) (renderRequest, error) {
 		return renderRequest{}, fmt.Errorf("--data is not valid JSON: %w", err)
 	}
 
-	if fs.project != "" && fs.inlineTemplate != "" {
-		return renderRequest{}, fmt.Errorf("--project and --inline-template are mutually exclusive")
+	if fs.project == "" {
+		return renderRequest{}, fmt.Errorf("--project is required")
+	}
+	if fs.template == "" {
+		return renderRequest{}, fmt.Errorf("--template is required")
 	}
 
-	var input polipage.RenderInput
-	switch {
-	case fs.project != "":
-		if fs.template == "" {
-			return renderRequest{}, fmt.Errorf("--template is required when --project is set")
-		}
-		in := polipage.ProjectModeInput{
+	return renderRequest{
+		Cfg: cfg,
+		Input: polipage.RenderInput{
 			Project:     fs.project,
 			Template:    fs.template,
 			Data:        data,
 			Format:      polipage.PageFormat(fs.format),
 			Orientation: polipage.Orientation(fs.orientation),
 			Locale:      fs.locale,
-		}
-		if fs.templateVersion != "" {
-			in.Version = polipage.Opt(fs.templateVersion)
-		}
-		input = in
-	case fs.inlineTemplate != "":
-		input = polipage.InlineModeInput{
-			Template:    fs.inlineTemplate,
-			Data:        data,
-			Format:      polipage.PageFormat(fs.format),
-			Orientation: polipage.Orientation(fs.orientation),
-			Locale:      fs.locale,
-		}
-	default:
-		return renderRequest{}, fmt.Errorf("one of --project or --inline-template is required")
-	}
-
-	return renderRequest{
-		Cfg:   cfg,
-		Input: input,
-		Out:   out,
+		},
+		Out: out,
 	}, nil
 }

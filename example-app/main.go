@@ -9,7 +9,7 @@
 //	go run .
 //	# → http://127.0.0.1:8080
 //
-// POLI_PAGE_API_KEY is required (a pp_test_* key). Other POLI_PAGE_*
+// POLI_PAGE_API_KEY is required (a pp_sandbox_* key). Other POLI_PAGE_*
 // variables are honored per spec §7.2; see the parent docs/ for the
 // full list.
 package main

@@ -26,7 +26,6 @@ go run github.com/poli-page/gin/cmd/polipage-render --help
 polipage-render \
     --project=getting-started \
     --template=welcome \
-    --template-version=1.0.0 \
     --data='{"name":"World"}' \
     -o welcome.pdf
 ```
@@ -35,31 +34,19 @@ polipage-render \
 
 ```bash
 polipage-render --project=getting-started --template=welcome \
-    --template-version=1.0.0 --data='{"name":"World"}' \
-    > welcome.pdf
+    --data='{"name":"World"}' > welcome.pdf
 ```
 
 When `-o` is omitted the binary writes the PDF bytes to stdout. Diagnostics still go to stderr.
 
-### Render inline HTML (no project required)
-
-```bash
-polipage-render \
-    --inline-template='<h1>Hello {{ name }}</h1>' \
-    --data='{"name":"World"}' \
-    -o hello.html
-```
-
-Inline mode renders via `Render.Preview` and writes the HTML output; the SDK does not support PDF rendering from a raw `--inline-template` (only project-mode inputs can produce PDFs). Use `--project` + `--template` for a PDF.
+There is no version flag: the API key selects the environment, and the project's copy published in that environment is rendered. A `pp_sandbox_…` key renders a watermarked PDF that does not count toward the monthly quota.
 
 ## Flags
 
 | Flag | Required | Description |
 |---|---|---|
-| `--project` | one of `--project` or `--inline-template` | Project slug. |
-| `--template` | with `--project` | Template slug. |
-| `--template-version` | with `--project` | Template version (semver). **Not** `--version` — see [Gotchas](#gotchas). |
-| `--inline-template` | one of `--project` or `--inline-template` | Raw HTML template body. |
+| `--project` | _required_ | Project slug. |
+| `--template` | _required_ | Template slug. |
 | `--data` | _required_ | JSON object passed to the template. |
 | `--format` | _optional_ | Page format: `A4`, `Letter`, `Legal`, etc. SDK default applies otherwise. |
 | `--orientation` | _optional_ | `portrait` or `landscape`. |
@@ -75,7 +62,7 @@ Environment variables `POLI_PAGE_API_KEY`, `POLI_PAGE_BASE_URL`, `POLI_PAGE_TIME
 |---|---|
 | `0` | Success. PDF written to `-o` or stdout. |
 | `1` | Authentication or authorization failure (`*polipage.Error.IsAuthError()`). |
-| `2` | Validation rejected the render (`IsValidationError()`, includes missing data, bad version format, missing template). |
+| `2` | Validation rejected the render (`IsValidationError()`, e.g. missing or invalid data). |
 | `3` | Network/timeout failure (`IsNetworkError()`). |
 | `4` | Anything else — rate limit, 5xx, or an SDK-internal error. The stderr message names the code. |
 | `64` | Misuse — bad flag, missing required flag, invalid JSON in `--data`. |
@@ -83,7 +70,7 @@ Environment variables `POLI_PAGE_API_KEY`, `POLI_PAGE_BASE_URL`, `POLI_PAGE_TIME
 A simple bash check:
 
 ```bash
-if ! polipage-render --project=... --template=... --template-version=... --data='{...}' -o out.pdf; then
+if ! polipage-render --project=... --template=... --data='{...}' -o out.pdf; then
     case $? in
         1) echo "API key issue" >&2 ;;
         2) echo "Template or data rejected" >&2 ;;
@@ -108,7 +95,6 @@ GitHub Actions step that smoke-tests every push:
     go run ./cmd/polipage-render \
         --project=getting-started \
         --template=welcome \
-        --template-version=1.0.0 \
         --data='{"name":"ci"}' \
         -o /tmp/welcome.pdf
     test -s /tmp/welcome.pdf
@@ -118,12 +104,10 @@ The `if` guard means the step is silently skipped when forks open PRs without se
 
 ## Gotchas
 
-- **Use `--template-version`, not `--version`.** Cobra reserves `--version` as a global flag for binaries that opt into it; collisions silently shadow your value with the global one. Same hazard hit the Symfony bundle (`bin/console poli-page:render` was renamed `--template-version` after the original command silently produced no output). See `INTEGRATIONS_PLAN.md` §"Cross-cutting DX patterns" §3 for the cross-framework list.
-
 - **`--data` is a single JSON string, not multiple `--data key=value` flags.** Quote it carefully in your shell. Bash heredoc helps for complex payloads:
 
   ```bash
-  polipage-render --project=... --template=... --template-version=... -o out.pdf --data="$(cat <<'JSON'
+  polipage-render --project=... --template=... -o out.pdf --data="$(cat <<'JSON'
   {"items": [{"sku": "A-1", "qty": 3}, {"sku": "B-7", "qty": 1}]}
   JSON
   )"

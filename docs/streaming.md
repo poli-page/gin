@@ -23,10 +23,9 @@ import (
 func bigBookHandler(c *gin.Context) {
 	client := polipagegin.ClientFrom(c)
 
-	body, err := client.Render.PDFStream(c.Request.Context(), polipage.ProjectModeInput{
+	body, err := client.Render.PDFStream(c.Request.Context(), polipage.RenderInput{
 		Project:  "books",
 		Template: "manuscript",
-		Version:  polipage.Opt("3.0.0"),
 		Data:     map[string]any{"slug": c.Param("slug")},
 	})
 	if err != nil {
