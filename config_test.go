@@ -5,6 +5,7 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -136,23 +137,36 @@ func TestFromEnv_WellFormedKeyLoadsWithoutWarning(t *testing.T) {
 	}
 }
 
-func TestFromEnv_MalformedKeyLoadsWithOneWarningWithoutTheSecret(t *testing.T) {
+// malformedKeyWarning is the whole warning text: it names the expected
+// format and nothing of the value, since even a grammar-valid pp_{env}_ part
+// may be a mis-pasted secret fragment.
+const malformedKeyWarning = "polipagegin: POLI_PAGE_API_KEY does not match the expected format " +
+	"pp_{environment}_{32 lowercase hex characters}; starting anyway, " +
+	"the Poli Page API decides whether the key is valid"
+
+func TestFromEnv_MalformedKeyLoadsWithOneWarningShowingNoKeyText(t *testing.T) {
 	for _, tc := range []struct {
-		name, key, secret string
+		name, key string
+		// shown lists key fragments, besides the key itself, that must not
+		// appear in the warning.
+		shown []string
 	}{
-		{"short secret", "pp_sandbox_x", "x"},
-		{"uppercase environment", "pp_Sandbox_" + keySecret, keySecret},
-		{"environment starting with a digit", "pp_2fa_" + keySecret, keySecret},
-		{"double hyphen in environment", "pp_a--b_" + keySecret, keySecret},
-		{"21-character environment", "pp_" + strings.Repeat("a", 21) + "_" + keySecret, keySecret},
-		{"secret in the environment slot", "pp_" + keySecret + "_" + keySecret, keySecret},
-		{"non-pp_ token", "sk_live_" + keySecret, keySecret},
-		{"31-hex secret", "pp_sandbox_" + keySecret[:31], keySecret[:31]},
-		{"33-hex secret", "pp_sandbox_" + keySecret + "0", keySecret + "0"},
-		{"uppercase secret", "pp_sandbox_" + strings.ToUpper(keySecret), strings.ToUpper(keySecret)},
-		{"trailing character", sandboxKey + "x", keySecret + "x"},
-		{"leading character", "x" + sandboxKey, keySecret},
-		{"trailing newline", sandboxKey + "\n", keySecret + "\n"},
+		{"grammar-valid prefix, short secret", "pp_sandbox_x", []string{"pp_sandbox_", "sandbox"}},
+		{"grammar-valid prefix, 31-hex secret", "pp_sandbox_" + keySecret[:31], []string{"pp_sandbox_", keySecret[:31]}},
+		{"grammar-valid prefix, 33-hex secret", "pp_sandbox_" + keySecret + "0", []string{"pp_sandbox_", keySecret}},
+		{"grammar-valid prefix, uppercase secret", "pp_sandbox_" + strings.ToUpper(keySecret), []string{"pp_sandbox_", strings.ToUpper(keySecret)}},
+		{"grammar-valid hyphenated prefix", "pp_eu-prod_x", []string{"pp_eu-prod_", "eu-prod"}},
+		{"grammar-valid 20-character prefix", "pp_" + strings.Repeat("a", 20) + "_x", []string{strings.Repeat("a", 20)}},
+		{"hex fragment in the environment slot", "pp_abc123_" + keySecret[:16], []string{"pp_abc123_", "abc123", keySecret[:16]}},
+		{"secret in the environment slot", "pp_" + keySecret + "_" + keySecret, []string{keySecret}},
+		{"uppercase environment", "pp_Sandbox_" + keySecret, []string{"Sandbox", keySecret}},
+		{"environment starting with a digit", "pp_2fa_" + keySecret, []string{"pp_2fa_", keySecret}},
+		{"double hyphen in environment", "pp_a--b_" + keySecret, []string{"a--b", keySecret}},
+		{"21-character environment", "pp_" + strings.Repeat("a", 21) + "_" + keySecret, []string{strings.Repeat("a", 21), keySecret}},
+		{"non-pp_ token", "sk_live_" + keySecret, []string{"sk_live", keySecret}},
+		{"trailing character", sandboxKey + "x", []string{"pp_sandbox_", keySecret}},
+		{"leading character", "x" + sandboxKey, []string{"pp_sandbox_", keySecret}},
+		{"trailing newline", sandboxKey + "\n", []string{"pp_sandbox_", keySecret}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			setEnv(t, map[string]string{"POLI_PAGE_API_KEY": tc.key})
@@ -164,47 +178,25 @@ func TestFromEnv_MalformedKeyLoadsWithOneWarningWithoutTheSecret(t *testing.T) {
 
 			got := warnings(buf)
 			require.Len(t, got, 1)
-			assert.Contains(t, got[0], "POLI_PAGE_API_KEY")
-			assert.NotContains(t, got[0], tc.key)
-			assert.NotContains(t, got[0], "_"+tc.secret)
+			_, record, ok := strings.Cut(got[0], " level=WARN ")
+			require.True(t, ok, got[0])
+			assert.Equal(t, "msg="+strconv.Quote(malformedKeyWarning), record,
+				"the warning carries no attribute, so no key text")
+			for _, fragment := range append(tc.shown, strings.TrimSpace(tc.key)) {
+				assert.NotContains(t, buf.String(), fragment)
+			}
 		})
 	}
 }
 
-// The warning names the pp_{env}_ part only while {env} is a valid
-// environment name (lowercase letter first, letters, digits and single inner
-// hyphens, at most 20 characters), so a secret fragment pasted into the
-// environment slot is not echoed.
-func TestFromEnv_MalformedKeyWarningShowsAtMostTheEnvironmentPrefix(t *testing.T) {
-	env20, env21 := strings.Repeat("a", 20), strings.Repeat("a", 21)
-	for _, tc := range []struct {
-		key, want, notWant string
-	}{
-		{"pp_sandbox_x", `keyPrefix=pp_sandbox_…`, ""},
-		{"pp_eu-prod_x", `keyPrefix=pp_eu-prod_…`, ""},
-		{"pp_" + env20 + "_x", "keyPrefix=pp_" + env20 + "_…", ""},
-		{"pp_" + env21 + "_x", "keyPrefix=none", "pp_" + env21},
-		{"pp_Sandbox_" + keySecret, "keyPrefix=none", "Sandbox"},
-		{"pp_0123456789abcdef_" + keySecret, "keyPrefix=none", "0123456789abcdef"},
-		{"pp_a--b_" + keySecret, "keyPrefix=none", "a--b"},
-		{"pp_sandbox-_" + keySecret, "keyPrefix=none", "sandbox-"},
-		{"sk_live_" + keySecret, "keyPrefix=none", "sk_live"},
-	} {
-		t.Run(tc.key, func(t *testing.T) {
-			setEnv(t, map[string]string{"POLI_PAGE_API_KEY": tc.key})
-			buf := captureLog(t)
+func TestFromEnv_EmptyKeyErrorShowsNoKeyText(t *testing.T) {
+	setEnv(t, map[string]string{"POLI_PAGE_API_KEY": ""})
+	buf := captureLog(t)
 
-			_, err := polipagegin.FromEnv()
-			require.NoError(t, err)
-
-			got := warnings(buf)
-			require.Len(t, got, 1)
-			assert.Contains(t, got[0], tc.want)
-			if tc.notWant != "" {
-				assert.NotContains(t, got[0], tc.notWant)
-			}
-		})
-	}
+	_, err := polipagegin.FromEnv()
+	require.ErrorIs(t, err, polipagegin.ErrInvalidConfig)
+	assert.Equal(t, "polipagegin: invalid configuration: POLI_PAGE_API_KEY is required", err.Error())
+	assert.Empty(t, buf.String())
 }
 
 func TestFromEnv_BaseURLUnparseable(t *testing.T) {

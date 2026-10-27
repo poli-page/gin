@@ -115,7 +115,7 @@ You either construct the SDK client yourself with `option.With*` and pass it to 
 
 | Variable | Default | Description |
 |---|---|---|
-| `POLI_PAGE_API_KEY` | _required_ | Your API key, `pp_{environment}_…` (see the key table above). A missing or empty value is an error. Any other value is accepted: one that does not match `pp_{environment}_{32 lowercase hex}` logs one `log/slog` warning (showing at most its `pp_{environment}_` part, never the secret) and the API decides whether the key is valid (`401 INVALID_API_KEY`). |
+| `POLI_PAGE_API_KEY` | _required_ | Your API key, `pp_{environment}_…` (see the key table above). A missing or empty value is an error. Any other value is accepted: one that does not match `pp_{environment}_{32 lowercase hex}` logs one `log/slog` warning (it names the expected format and shows no part of the key, not even its `pp_{environment}_` part) and the API decides whether the key is valid (`401 INVALID_API_KEY`). |
 | `POLI_PAGE_BASE_URL` | SDK default | Override the API origin. |
 | `POLI_PAGE_TIMEOUT` | SDK default | Per-request timeout, parsed by `time.ParseDuration` (`30s`, `2m`). |
 | `POLI_PAGE_MAX_RETRIES` | SDK default | Integer in `[0, 10]`. |

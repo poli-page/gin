@@ -5,7 +5,7 @@ All notable changes to `poli-page/gin` are documented here. Format follows [Keep
 ## [Unreleased]
 
 ### Changed
-- **Breaking:** API keys are `pp_{environment}_{32 lowercase hex}` for any environment (`pp_sandbox_…`, `pp_live_…`, `pp_staging_…`). `FromEnv` no longer rejects a key by its `pp_test_` / `pp_live_` prefix: a missing or empty `POLI_PAGE_API_KEY` is still an error, and any other value that does not match the key format logs one `log/slog` warning (showing at most its `pp_{environment}_` part, never the secret) and loads, so the API answers with its own error.
+- **Breaking:** API keys are `pp_{environment}_{32 lowercase hex}` for any environment (`pp_sandbox_…`, `pp_live_…`, `pp_staging_…`). `FromEnv` no longer rejects a key by its `pp_test_` / `pp_live_` prefix: a missing or empty `POLI_PAGE_API_KEY` is still an error, and any other value that does not match the key format logs one `log/slog` warning (it names the expected format and shows no part of the key, not even its `pp_{environment}_` part) and loads, so the API answers with its own error.
 - **Breaking:** builds against `github.com/poli-page/sdk-go` with environments: renders take a `polipage.RenderInput` with no `Version`, and the key selects the environment whose published copy is rendered. Both `go.mod` files require the SDK module instead of a `replace` to a sibling `../sdk-go` checkout.
 - Example app: `GET /api/errors/not-found` replaces `GET /api/render/error`. It renders the `does-not-exist` template of `getting-started` with `{}` and answers `404` with code `TEMPLATE_NOT_FOUND` through `ErrorMiddleware`.
 - The integration test skips unless `POLI_PAGE_API_KEY` is a `pp_sandbox_…` key.

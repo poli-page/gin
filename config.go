@@ -82,11 +82,6 @@ const envNamePattern = `[a-z][a-z0-9]*(?:-[a-z0-9]+)*`
 // checks the captured environment name against envNameMaxLen instead.
 var apiKeyPattern = regexp.MustCompile(`^pp_(` + envNamePattern + `)_[0-9a-f]{32}$`)
 
-// apiKeyEnvPrefix matches the pp_{env}_ part of a key, the most of a key
-// that may be logged: the secret follows it. An {env} that is not a valid
-// environment name is not shown, since it may be part of the secret.
-var apiKeyEnvPrefix = regexp.MustCompile(`^pp_(` + envNamePattern + `)_`)
-
 // FromEnv loads Config from the documented POLI_PAGE_* environment
 // variables, validating each one. On failure the returned error wraps
 // ErrInvalidConfig and names the offending variable in its message.
@@ -138,14 +133,12 @@ func parseAPIKey(cfg *Config) error {
 		return fmt.Errorf("%w: %s is required", ErrInvalidConfig, envAPIKey)
 	}
 	if !wellFormedAPIKey(v) {
-		prefix := "none"
-		if m := apiKeyEnvPrefix.FindStringSubmatch(v); len(m) == 2 && len(m[1]) <= envNameMaxLen {
-			prefix = m[0] + "…"
-		}
+		// No part of the key is logged, not even a grammar-valid pp_{env}_:
+		// it may be a mis-pasted secret fragment.
 		slog.Warn(
-			"polipagegin: "+envAPIKey+" does not match pp_{environment}_{32 lowercase hex}; "+
-				"starting anyway, the Poli Page API decides whether the key is valid",
-			"keyPrefix", prefix,
+			"polipagegin: " + envAPIKey + " does not match the expected format " +
+				"pp_{environment}_{32 lowercase hex characters}; starting anyway, " +
+				"the Poli Page API decides whether the key is valid",
 		)
 	}
 	cfg.APIKey = v
