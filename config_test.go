@@ -152,6 +152,7 @@ func TestFromEnv_MalformedKeyLoadsWithOneWarningWithoutTheSecret(t *testing.T) {
 		{"uppercase secret", "pp_sandbox_" + strings.ToUpper(keySecret), strings.ToUpper(keySecret)},
 		{"trailing character", sandboxKey + "x", keySecret + "x"},
 		{"leading character", "x" + sandboxKey, keySecret},
+		{"trailing newline", sandboxKey + "\n", keySecret + "\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			setEnv(t, map[string]string{"POLI_PAGE_API_KEY": tc.key})
@@ -170,18 +171,23 @@ func TestFromEnv_MalformedKeyLoadsWithOneWarningWithoutTheSecret(t *testing.T) {
 	}
 }
 
-// The warning names the pp_{env}_ part only while {env} is no longer than
-// an environment name can be (20 characters), so a secret pasted into the
-// environment slot is never echoed.
+// The warning names the pp_{env}_ part only while {env} is a valid
+// environment name (lowercase letter first, letters, digits and single inner
+// hyphens, at most 20 characters), so a secret fragment pasted into the
+// environment slot is not echoed.
 func TestFromEnv_MalformedKeyWarningShowsAtMostTheEnvironmentPrefix(t *testing.T) {
 	env20, env21 := strings.Repeat("a", 20), strings.Repeat("a", 21)
 	for _, tc := range []struct {
 		key, want, notWant string
 	}{
 		{"pp_sandbox_x", `keyPrefix=pp_sandbox_…`, ""},
-		{"pp_Sandbox_" + keySecret, `keyPrefix=pp_Sandbox_…`, ""},
+		{"pp_eu-prod_x", `keyPrefix=pp_eu-prod_…`, ""},
 		{"pp_" + env20 + "_x", "keyPrefix=pp_" + env20 + "_…", ""},
 		{"pp_" + env21 + "_x", "keyPrefix=none", "pp_" + env21},
+		{"pp_Sandbox_" + keySecret, "keyPrefix=none", "Sandbox"},
+		{"pp_0123456789abcdef_" + keySecret, "keyPrefix=none", "0123456789abcdef"},
+		{"pp_a--b_" + keySecret, "keyPrefix=none", "a--b"},
+		{"pp_sandbox-_" + keySecret, "keyPrefix=none", "sandbox-"},
 		{"sk_live_" + keySecret, "keyPrefix=none", "sk_live"},
 	} {
 		t.Run(tc.key, func(t *testing.T) {

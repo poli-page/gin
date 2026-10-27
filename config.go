@@ -72,16 +72,20 @@ const (
 	maxRetriesMax = 10
 )
 
+// envNamePattern is an environment name without its length bound, which
+// callers check against envNameMaxLen.
+const envNamePattern = `[a-z][a-z0-9]*(?:-[a-z0-9]+)*`
+
 // apiKeyPattern is the SDK contract's full-key regex
 // ^pp_(?=[a-z][a-z0-9-]{0,19}_)[a-z][a-z0-9]*(?:-[a-z0-9]+)*_[0-9a-f]{32}$
 // without its lookahead, which RE2 does not support: wellFormedAPIKey
 // checks the captured environment name against envNameMaxLen instead.
-var apiKeyPattern = regexp.MustCompile(`^pp_([a-z][a-z0-9]*(?:-[a-z0-9]+)*)_[0-9a-f]{32}$`)
+var apiKeyPattern = regexp.MustCompile(`^pp_(` + envNamePattern + `)_[0-9a-f]{32}$`)
 
 // apiKeyEnvPrefix matches the pp_{env}_ part of a key, the most of a key
-// that may be logged: the secret follows it. An {env} longer than any
-// environment name is not shown, since it may be the secret itself.
-var apiKeyEnvPrefix = regexp.MustCompile(fmt.Sprintf(`^pp_[^_]{1,%d}_`, envNameMaxLen))
+// that may be logged: the secret follows it. An {env} that is not a valid
+// environment name is not shown, since it may be part of the secret.
+var apiKeyEnvPrefix = regexp.MustCompile(`^pp_(` + envNamePattern + `)_`)
 
 // FromEnv loads Config from the documented POLI_PAGE_* environment
 // variables, validating each one. On failure the returned error wraps
@@ -135,8 +139,8 @@ func parseAPIKey(cfg *Config) error {
 	}
 	if !wellFormedAPIKey(v) {
 		prefix := "none"
-		if p := apiKeyEnvPrefix.FindString(v); p != "" {
-			prefix = p + "…"
+		if m := apiKeyEnvPrefix.FindStringSubmatch(v); len(m) == 2 && len(m[1]) <= envNameMaxLen {
+			prefix = m[0] + "…"
 		}
 		slog.Warn(
 			"polipagegin: "+envAPIKey+" does not match pp_{environment}_{32 lowercase hex}; "+
