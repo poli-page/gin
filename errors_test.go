@@ -338,3 +338,20 @@ func TestMiddleware_WithErrorMiddlewareAnswersOnce(t *testing.T) {
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 	assert.JSONEq(t, `{"code":"network_error","message":"Network request failed","status":503,"requestId":null}`, w.Body.String())
 }
+
+func TestMiddleware_ErrorHandlerDropsHeadersSetForAnotherAnswer(t *testing.T) {
+	w := runMiddleware(t, func(c *gin.Context) {
+		c.Header("Content-Type", "application/pdf")
+		c.Header("Content-Disposition", `attachment; filename="a.pdf"`)
+		c.Header("X-Accel-Buffering", "no")
+		c.Header("Content-Length", "1234")
+		_ = c.Error(&polipage.Error{Code: polipage.ErrCodeTimeout, Message: "Request timed out after 60000ms"})
+	})
+
+	assert.Equal(t, http.StatusGatewayTimeout, w.Code)
+	assert.Equal(t, "application/json; charset=utf-8", w.Header().Get("Content-Type"))
+	assert.Empty(t, w.Header().Get("Content-Disposition"))
+	assert.Empty(t, w.Header().Get("X-Accel-Buffering"))
+	assert.NotEqual(t, "1234", w.Header().Get("Content-Length"))
+	assert.JSONEq(t, `{"code":"timeout","message":"Request timed out after 60000ms","status":504,"requestId":null}`, w.Body.String())
+}

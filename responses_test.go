@@ -2,6 +2,7 @@ package polipagegin_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	polipagegin "github.com/poli-page/gin"
 	polipage "github.com/poli-page/sdk-go"
+	"github.com/poli-page/sdk-go/option"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -221,4 +223,65 @@ func TestPDFStream_PanicsOnNilReader(t *testing.T) {
 			polipagegin.PDFStream(c, nil, polipagegin.PDFOptions{Filename: "x.pdf"})
 		},
 		"nil reader is a programmer error and must panic loudly, not produce an empty response")
+}
+
+// firstReadFails is a stream whose first Read fails, as the SDK's PDF
+// stream does when the presigned download fails.
+type firstReadFails struct{ err error }
+
+func (r firstReadFails) Read([]byte) (int, error) { return 0, r.err }
+
+func TestPDFStream_FirstReadSDKErrorIsAnsweredAsJSONByTheErrorHandler(t *testing.T) {
+	sdkErr := &polipage.Error{Code: "DOWNLOAD_FAILED", StatusCode: http.StatusForbidden, Message: "Failed to download PDF: HTTP 403"}
+	r := gin.New()
+	r.Use(polipagegin.Middleware(polipage.NewClient(option.WithAPIKey(sandboxKey))))
+	r.GET("/", func(c *gin.Context) {
+		polipagegin.PDFStream(c, firstReadFails{err: sdkErr}, polipagegin.PDFOptions{Filename: "a.pdf"})
+	})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/", http.NoBody))
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Equal(t, "application/json; charset=utf-8", w.Header().Get("Content-Type"))
+	assert.Empty(t, w.Header().Get("Content-Disposition"))
+	assert.Empty(t, w.Header().Get("X-Accel-Buffering"))
+	payload, err := json.Marshal(sdkErr.ToPayload())
+	require.NoError(t, err)
+	assert.JSONEq(t, string(payload), w.Body.String())
+}
+
+func TestPDFStream_FirstReadFailureSetsNoHeader(t *testing.T) {
+	c, w := newResponseTestContext()
+	polipagegin.PDFStream(c, firstReadFails{err: errors.New("boom")}, polipagegin.PDFOptions{Filename: "a.pdf"})
+
+	require.Len(t, c.Errors, 1)
+	assert.Empty(t, w.Header().Get("Content-Type"))
+	assert.Empty(t, w.Header().Get("Content-Disposition"))
+	assert.Empty(t, w.Header().Get("X-Accel-Buffering"))
+	assert.False(t, c.Writer.Written())
+}
+
+func TestPDFStream_EmptyStreamAnswers200WithPDFHeaders(t *testing.T) {
+	c, w := newResponseTestContext()
+	polipagegin.PDFStream(c, bytes.NewReader(nil), polipagegin.PDFOptions{Filename: "a.pdf"})
+
+	assert.Empty(t, c.Errors)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/pdf", w.Header().Get("Content-Type"))
+	assert.True(t, c.Writer.Written())
+}
+
+func TestPDFStream_MidStreamSDKErrorKeepsThePartialPDF(t *testing.T) {
+	sdkErr := &polipage.Error{Code: polipage.ErrCodeNetworkError, Message: "Network request failed"}
+	r := gin.New()
+	r.Use(polipagegin.Middleware(polipage.NewClient(option.WithAPIKey(sandboxKey))))
+	r.GET("/", func(c *gin.Context) {
+		polipagegin.PDFStream(c, &erroringReader{data: []byte("%PDF-1.4 partial"), err: sdkErr}, polipagegin.PDFOptions{Filename: "a.pdf"})
+	})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/", http.NoBody))
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/pdf", w.Header().Get("Content-Type"))
+	assert.Equal(t, "%PDF-1.4 partial", w.Body.String(), "the error handler never writes over a started stream")
 }

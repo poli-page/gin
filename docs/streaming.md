@@ -88,7 +88,7 @@ This is cheaper than streaming when the document was already produced server-sid
 
 - **Cancellation propagates correctly only if you pass `c.Request.Context()`.** When the browser closes the connection, Gin cancels the request context; the SDK aborts the upstream request and `PDFStream` writes whatever bytes it has flushed so far. Passing `context.Background()` instead leaves the goroutine reading from the upstream until the SDK timeout fires.
 
-- **Mid-stream `err` from `io.Copy` cannot be surfaced as a clean JSON error.** Once the helper has written status 200 and the first chunk, you cannot upgrade to a 500 — the headers are gone. The helper records the error via `c.Error(err)` so logging middleware sees it, but the response is what it is. Plan for this when designing alerts.
+- **Mid-stream `err` from `io.Copy` cannot be surfaced as a clean JSON error.** Once the helper has written status 200 and the first chunk, you cannot upgrade to a 500 — the headers are gone. The helper records the error via `c.Error(err)` so logging middleware sees it, but the response is what it is. Plan for this when designing alerts. A failure on the very first read is different: `PDFStream` reads the first chunk before it sets any header, so that error (for example `DOWNLOAD_FAILED`) is queued with nothing written, and the middleware's error handler answers it as JSON with no PDF headers.
 
 ## Related
 

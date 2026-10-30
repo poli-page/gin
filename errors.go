@@ -28,7 +28,8 @@ import (
 // middleware (or Gin's default) to deal with. Widening to all `error`
 // values would swallow non-Poli-Page failures and destroy observability.
 //
-// The body is the SDK's (*polipage.Error).ToPayload(), unchanged. Its
+// The body is the SDK's (*polipage.Error).ToPayload(), unchanged, with
+// Content-Type: application/json. Its
 // status is the API's HTTP status, 503 for network_error and 504 for
 // timeout; the response uses the same status, or 500 when the payload has
 // none (the body then carries "status": null). Nothing is written when
@@ -81,11 +82,22 @@ func respondQueuedError(c *gin.Context) {
 
 // respondPolipageError is the shared response writer: the body is the
 // SDK's payload, the status its status or 500 when it has none.
+//
+// Headers a handler or a response helper set for the answer it meant to
+// send (a PDF's Content-Type, Content-Disposition, X-Accel-Buffering,
+// Content-Length) do not describe this JSON body: they are dropped, and
+// Content-Type is set to JSON, which gin's renderer would otherwise leave
+// as it found it.
 func respondPolipageError(c *gin.Context, pe *polipage.Error) {
 	payload := pe.ToPayload()
 	status := payload.Status
 	if status == 0 {
 		status = http.StatusInternalServerError
 	}
+	h := c.Writer.Header()
+	h.Del("Content-Disposition")
+	h.Del("X-Accel-Buffering")
+	h.Del("Content-Length")
+	h.Set("Content-Type", jsonContentType)
 	c.AbortWithStatusJSON(status, payload)
 }

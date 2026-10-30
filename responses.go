@@ -82,7 +82,12 @@ func DocumentRedirect(c *gin.Context, descriptor *polipage.DocumentDescriptor) {
 // prerequisite (see Middleware) turns it into a 500 in the unlikely event
 // it slips into production.
 //
-// Mid-stream failures (Read returns a non-EOF error, or Write fails) are
+// PDFStream reads the first chunk before it writes any header. When that
+// first read fails, nothing is set or written: the error is queued on
+// c.Errors and the middleware's error handler (or the caller) answers it
+// as a normal error instead of a PDF response.
+//
+// Later failures (Read returns a non-EOF error, or Write fails) are
 // attached to c.Errors via c.Error(...) so downstream logging middleware
 // observes them. The response is partial at that point — bytes
 // successfully written already reached the wire — and the helper returns
@@ -91,6 +96,13 @@ func PDFStream(c *gin.Context, body io.Reader, opts PDFOptions) {
 	if body == nil {
 		panic("polipagegin: PDFStream called with nil reader")
 	}
+	buf := make([]byte, pdfStreamChunk)
+	n, rerr := readFirstChunk(body, buf)
+	if rerr != nil && !errors.Is(rerr, io.EOF) {
+		_ = c.Error(fmt.Errorf("polipagegin: stream read failed: %w", rerr))
+		return
+	}
+
 	writePDFHeaders(c, opts)
 	c.Header("X-Accel-Buffering", "no")
 	c.Status(http.StatusOK)
@@ -99,9 +111,7 @@ func PDFStream(c *gin.Context, body io.Reader, opts PDFOptions) {
 	// Flush() delegates to the underlying writer). The nil-check is a
 	// defensive guard for the spec §8.3 "exotic wrapper hides it" case.
 	flusher, _ := c.Writer.(http.Flusher)
-	buf := make([]byte, pdfStreamChunk)
 	for {
-		n, rerr := body.Read(buf)
 		if n > 0 {
 			if _, werr := c.Writer.Write(buf[:n]); werr != nil {
 				_ = c.Error(fmt.Errorf("polipagegin: stream write failed: %w", werr))
@@ -112,11 +122,26 @@ func PDFStream(c *gin.Context, body io.Reader, opts PDFOptions) {
 			}
 		}
 		if errors.Is(rerr, io.EOF) {
+			// An empty stream still answers 200 with the PDF headers.
+			c.Writer.WriteHeaderNow()
 			return
 		}
 		if rerr != nil {
 			_ = c.Error(fmt.Errorf("polipagegin: stream read failed: %w", rerr))
 			return
+		}
+		n, rerr = body.Read(buf)
+	}
+}
+
+// readFirstChunk reads until it gets at least one byte or an error, so a
+// reader that returns (0, nil) does not make PDFStream commit its headers
+// before it knows the stream works.
+func readFirstChunk(body io.Reader, buf []byte) (int, error) {
+	for {
+		n, err := body.Read(buf)
+		if n > 0 || err != nil {
+			return n, err
 		}
 	}
 }
@@ -126,6 +151,7 @@ func PDFStream(c *gin.Context, body io.Reader, opts PDFOptions) {
 const (
 	pdfContentType  = "application/pdf"
 	htmlContentType = "text/html; charset=utf-8"
+	jsonContentType = "application/json; charset=utf-8"
 	noStorePrivate  = "no-store, private"
 	noSniff         = "nosniff"
 

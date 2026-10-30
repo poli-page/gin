@@ -200,7 +200,7 @@ Or queue the error with `c.Error(err)` and let the error handler answer.
 - The HTTP status is the payload's `status`: the API's status for an API error, `503` for `network_error` and `504` for `timeout`.
 - An SDK error with no status (for example `aborted`) answers `500`, and the body keeps `"status": null`. `requestId` is `null` when the API sent none.
 - `code` and `message` are the SDK's, verbatim.
-- Only `*polipage.Error` is handled (the last error on `c.Errors`); any other error is left for your own error handling, and a response the handler already wrote is never overwritten.
+- Only `*polipage.Error` is handled (the last error on `c.Errors`); any other error is left for your own error handling, and a response the handler already wrote is never overwritten. Headers set for another answer (`Content-Disposition`, `X-Accel-Buffering`, `Content-Length`, a PDF `Content-Type`) are dropped from the JSON answer.
 
 Turn it off with one option:
 
