@@ -88,14 +88,17 @@ func DocumentRedirect(c *gin.Context, descriptor *polipage.DocumentDescriptor) {
 // as a normal error instead of a PDF response.
 //
 // Later failures (Read returns a non-EOF error, or Write fails) are
-// attached to c.Errors via c.Error(...) so logging middleware observes
-// them, and the response is cut short so the client sees a truncated
-// transfer instead of a complete-looking PDF: the status and the bytes
-// already sent cannot be taken back, so PDFStream closes the connection
-// without ending the chunked body. When the server's writer cannot be
-// hijacked (HTTP/2), it panics with http.ErrAbortHandler, net/http's
-// signal to abort the response; gin.Recovery() catches that panic, so
-// behind Recovery such a stream ends as a short 200.
+// attached to c.Errors via c.Error(...), and the response is cut short so
+// the client sees a truncated transfer instead of a complete-looking PDF:
+// the status and the bytes already sent cannot be taken back, so PDFStream
+// closes the connection without ending the chunked body. When the
+// connection cannot be hijacked (HTTP/2, a ResponseRecorder, or a writer
+// wrapper without Unwrap whose Hijack fails or panics), it panics with
+// http.ErrAbortHandler, net/http's signal to abort the response.
+// gin.Recovery() catches that panic, so behind Recovery such a stream ends
+// as a short 200 (and gin v1.9/v1.10 Recovery logs a stack trace for it).
+// On the panic path, middleware code after c.Next() (gin.Logger, for one)
+// does not run unless a recovery middleware sits inside it.
 func PDFStream(c *gin.Context, body io.Reader, opts PDFOptions) {
 	if body == nil {
 		panic("polipagegin: PDFStream called with nil reader")
@@ -142,10 +145,13 @@ func PDFStream(c *gin.Context, body io.Reader, opts PDFOptions) {
 
 // abortResponse cuts a response whose status and first bytes are already
 // on the wire, so the client sees an incomplete transfer. It hijacks and
-// closes the connection of the server's own writer (gin's writer, and any
-// wrapper that implements Unwrap, are looked through: gin's own Hijack
-// panics when the writer under it cannot hijack). Without a hijackable
-// writer it panics with http.ErrAbortHandler.
+// closes the connection of the server's own writer: gin's writer, and any
+// wrapper that implements Unwrap, are looked through, because gin's own
+// Hijack panics when the writer under it cannot hijack. A wrapper without
+// Unwrap (gin-contrib/gzip, for example) stops that walk, so its Hijack
+// may reach gin's and panic: that panic is recovered and treated as "cannot
+// hijack". Without a hijackable writer it panics with http.ErrAbortHandler,
+// always that value.
 func abortResponse(c *gin.Context) {
 	var w http.ResponseWriter = c.Writer
 	for {
@@ -155,14 +161,28 @@ func abortResponse(c *gin.Context) {
 		}
 		w = u.Unwrap()
 	}
-	if hj, ok := w.(http.Hijacker); ok {
-		if conn, _, err := hj.Hijack(); err == nil {
-			_ = conn.Close()
-			c.Abort()
-			return
-		}
+	if hj, ok := w.(http.Hijacker); ok && closeHijacked(hj) {
+		c.Abort()
+		return
 	}
 	panic(http.ErrAbortHandler)
+}
+
+// closeHijacked hijacks and closes the connection behind hj. It reports
+// false when the hijack fails, including when hj's Hijack panics (gin's
+// writer does so when the writer under it is not an http.Hijacker).
+func closeHijacked(hj http.Hijacker) (closed bool) {
+	defer func() {
+		if recover() != nil {
+			closed = false
+		}
+	}()
+	conn, _, err := hj.Hijack()
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
 }
 
 // readFirstChunk reads until it gets at least one byte or an error, so a

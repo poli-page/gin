@@ -330,3 +330,41 @@ func TestPDFStream_MidStreamFailureOverHTTP2AbortsTheStream(t *testing.T) {
 	assert.Equal(t, "%PDF-1.4 partial", string(body))
 	assert.Error(t, readErr, "the client must see the stream reset")
 }
+
+// noUnwrapWriter wraps gin's writer the way some middleware do (for
+// example gin-contrib/gzip): it embeds gin.ResponseWriter, so it has
+// Hijack, but no Unwrap.
+type noUnwrapWriter struct{ gin.ResponseWriter }
+
+func TestPDFStream_MidStreamFailureBehindAWrapperWithoutUnwrapPanicsWithErrAbortHandler(t *testing.T) {
+	reader := &erroringReader{data: []byte("%PDF-1.4 partial"), err: errors.New("cut")}
+	c, w := newResponseTestContext()
+	c.Writer = noUnwrapWriter{c.Writer}
+
+	// The wrapper's Hijack reaches gin's, which panics on a recorder; the
+	// helper must still abort with exactly http.ErrAbortHandler.
+	assert.PanicsWithValue(t, http.ErrAbortHandler, func() {
+		polipagegin.PDFStream(c, reader, polipagegin.PDFOptions{Filename: "x.pdf"})
+	})
+	require.Len(t, c.Errors, 1)
+	assert.Equal(t, "%PDF-1.4 partial", w.Body.String())
+}
+
+func TestPDFStream_MidStreamFailureBehindAWrapperWithoutUnwrapCutsTheConnection(t *testing.T) {
+	sdkErr := &polipage.Error{Code: polipage.ErrCodeDownloadFailed, Message: "Failed to download PDF: network error"}
+	r := gin.New()
+	r.Use(gin.Recovery(), func(c *gin.Context) {
+		c.Writer = noUnwrapWriter{c.Writer}
+		c.Next()
+	})
+	r.GET("/", func(c *gin.Context) {
+		polipagegin.PDFStream(c, &erroringReader{data: []byte("%PDF-1.4 partial"), err: sdkErr}, polipagegin.PDFOptions{Filename: "a.pdf"})
+	})
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+
+	resp, body, readErr := getBody(t, srv)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "%PDF-1.4 partial", string(body))
+	assert.ErrorIs(t, readErr, io.ErrUnexpectedEOF, "the wrapper's own Hijack still cuts an HTTP/1.1 connection")
+}
