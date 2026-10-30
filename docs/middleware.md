@@ -20,6 +20,8 @@ r.Use(polipagegin.Middleware(client))
 
 The middleware runs first on every request. It calls `c.Set("polipagegin.client", client)` and yields to the next handler — no allocation per request beyond the map entry Gin already maintains.
 
+When the handler chain returns, the middleware's error handler (on by default) answers the last `*polipage.Error` queued with `c.Error(err)`: status from `err.ToPayload().Status` (`500` when it has none), body `err.ToPayload()`, unless a response was already written. Turn it off with `polipagegin.Middleware(client, polipagegin.WithoutErrorHandler())`; see [Error handler](../README.md#error-handler).
+
 `polipagegin.Middleware(client)` returns a `gin.HandlerFunc`. Install it via `Use` on either `*gin.Engine` (global) or any `*gin.RouterGroup` (scoped to that group's routes). See [Per-route or per-group clients](#per-route-or-per-group-clients) below for the scoped pattern.
 
 ### `gin.Recovery()` is required
@@ -40,10 +42,9 @@ r.Use(polipagegin.Middleware(client))    // safe to panic from here on
 func invoiceHandler(c *gin.Context) {
 	client := polipagegin.ClientFrom(c)
 
-	pdf, err := client.Render.PDF(c.Request.Context(), polipage.ProjectModeInput{
+	pdf, err := client.Render.PDF(c.Request.Context(), polipage.RenderInput{
 		Project:  "billing",
 		Template: "invoice",
-		Version:  polipage.Opt("1.0.0"),
 		Data:     map[string]any{"invoiceId": c.Param("id")},
 	})
 	if err != nil {

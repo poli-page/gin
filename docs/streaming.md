@@ -23,10 +23,9 @@ import (
 func bigBookHandler(c *gin.Context) {
 	client := polipagegin.ClientFrom(c)
 
-	body, err := client.Render.PDFStream(c.Request.Context(), polipage.ProjectModeInput{
+	body, err := client.Render.PDFStream(c.Request.Context(), polipage.RenderInput{
 		Project:  "books",
 		Template: "manuscript",
-		Version:  polipage.Opt("3.0.0"),
 		Data:     map[string]any{"slug": c.Param("slug")},
 	})
 	if err != nil {
@@ -79,7 +78,7 @@ This is cheaper than streaming when the document was already produced server-sid
 
 - **The handler owns the reader's lifetime.** `polipagegin.PDFStream` takes `io.Reader`, not `io.ReadCloser` — `defer body.Close()` lives in the handler right after the SDK call. The symfony-bundle and NestJS packages made the same call (caller owns the stream); replicating it here keeps mistakes obvious.
 
-- **The stream is consumed once.** `Render.PDFStream` returns a single-reader `io.ReadCloser`; you cannot retry the response after partial bytes have been written. Mid-stream read errors surface as a broken TCP connection from the client's point of view (Gin will log them via the recovery middleware). The SDK throws **before** returning the reader when the upstream rejects the request, so a successful `PDFStream` call already means "API said yes".
+- **The stream is consumed once.** `Render.PDFStream` returns a single-reader `io.ReadCloser`; you cannot retry the response after partial bytes have been written. A mid-stream read or write error is queued on `c.Errors` and the connection is closed without ending the chunked body, so the client sees a truncated transfer (`unexpected EOF`) rather than a complete-looking PDF. The SDK throws **before** returning the reader when the upstream rejects the request, so a successful `PDFStream` call already means "API said yes".
 
 - **No `Content-Length`.** Chunked transfer encoding is the cost of streaming. Clients that need the size up-front (some legacy PDF viewers, range requests) should use buffered `Render.PDF` + `polipagegin.PDF`.
 
@@ -87,9 +86,9 @@ This is cheaper than streaming when the document was already produced server-sid
 
 - **`http.Flusher` is not always usable.** Gin's `gin.ResponseWriter` interface always embeds `http.Flusher`, so the type assertion never fails — but its `Flush()` delegates to the underlying writer, which on rare custom-middleware setups may not be a Flusher itself. In every realistic deployment (Go's `net/http` writer, `httptest.NewRecorder`, Gin's default test recorder) the flush works. If you've installed a writer-wrapping middleware and streaming feels laggy, that's the first place to look.
 
-- **Cancellation propagates correctly only if you pass `c.Request.Context()`.** When the browser closes the connection, Gin cancels the request context; the SDK aborts the upstream request and `PDFStream` writes whatever bytes it has flushed so far. Passing `context.Background()` instead leaves the goroutine reading from the upstream until the SDK timeout fires.
+- **Cancellation propagates correctly only if you pass `c.Request.Context()`.** When the browser closes the connection, Gin cancels the request context; the SDK aborts the upstream request, its next read fails with `aborted`, and `PDFStream` queues that error and closes the connection. Passing `context.Background()` instead leaves the goroutine reading from the upstream until the SDK timeout fires.
 
-- **Mid-stream `err` from `io.Copy` cannot be surfaced as a clean JSON error.** Once the helper has written status 200 and the first chunk, you cannot upgrade to a 500 — the headers are gone. The helper records the error via `c.Error(err)` so logging middleware sees it, but the response is what it is. Plan for this when designing alerts.
+- **A mid-stream error cannot be surfaced as a clean JSON error.** Once the helper has written status 200 and the first chunk, you cannot upgrade to a 500 — the headers are gone. The helper records the error via `c.Error(err)`, then cuts the response: it hijacks and closes the HTTP/1.x connection, so the client's read fails instead of ending cleanly. It looks through gin's writer and any wrapper that implements `Unwrap`; a wrapper without `Unwrap` (gin-contrib/gzip, for example) is hijacked through its own `Hijack`. When the connection cannot be hijacked (HTTP/2, a `httptest.ResponseRecorder`, or such a wrapper whose `Hijack` fails or panics with gin's type assertion error; any other panic from a wrapper's `Hijack` is passed on unchanged) it panics with `http.ErrAbortHandler`, which makes `net/http` reset the stream. `gin.Recovery()` catches that panic and finishes the response normally, so behind Recovery an HTTP/2 stream cut mid-way ends as a short `200`, and Gin v1.9/v1.10 Recovery logs a stack trace for it. If that matters, compare the downloaded size with the document's `sizeBytes`. On that panic path, middleware code after `c.Next()` (such as `gin.Logger` or your own logging of `c.Errors`) runs only if a recovery middleware sits inside it. In your own tests, a mid-stream failure through `httptest.NewRecorder` or `gin.CreateTestContext` panics with `http.ErrAbortHandler`, unless a recovery middleware (`gin.Default()`, `gin.Recovery()`) catches it: recover it or assert the panic. This behaviour is tested on Gin v1.9 and v1.10, the supported versions; later Gin versions refuse to hijack once body bytes are written, so behind a wrapper without `Unwrap` such a stream may end as a short `200` there. Plan for this when designing alerts. A failure on the very first read is different: `PDFStream` reads the first chunk before it sets any header, so that error (for example `DOWNLOAD_FAILED`) is queued with nothing written, and the middleware's error handler answers it as JSON with no PDF headers.
 
 ## Related
 

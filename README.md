@@ -4,13 +4,13 @@
 
 ## About
 
-This package wires the [Poli Page Go SDK](https://github.com/poli-page/sdk-go) into [Gin](https://gin-gonic.com/). You install a middleware that attaches a `*polipage.Client` to the gin context, return PDFs and HTML previews through typed response helpers that set the right headers, load configuration from environment variables, and translate `*polipage.Error` into JSON responses with an opt-in error middleware.
+This package wires the [Poli Page Go SDK](https://github.com/poli-page/sdk-go) into [Gin](https://gin-gonic.com/). You install a middleware that attaches a `*polipage.Client` to the gin context, return PDFs and HTML previews through typed response helpers that set the right headers, load configuration from environment variables, and get `*polipage.Error` answered as JSON by the error handler the middleware installs by default.
 
 **When to use this:**
 
 - You want a single `*polipage.Client` shared by every handler, plumbed through `*gin.Context` rather than a package-level singleton.
 - You want PDF and HTML preview responses with the correct `Content-Type`, `Cache-Control`, `X-Content-Type-Options`, and RFC 5987 `Content-Disposition` headers without writing them by hand.
-- You want `*polipage.Error` mapped to JSON responses with one middleware instead of a `switch` block in every handler.
+- You want `*polipage.Error` mapped to JSON responses by the middleware instead of a `switch` block in every handler.
 
 **When not to:**
 
@@ -20,20 +20,31 @@ This package wires the [Poli Page Go SDK](https://github.com/poli-page/sdk-go) i
 ## Requirements
 
 - Go `1.25+` (matches `github.com/poli-page/sdk-go`)
+- The Poli Page Go SDK `github.com/poli-page/sdk-go` `v0.11.0` or later (environment API keys, no template versions)
 - Gin `v1.10` (also supports `v1.9`)
 - A Poli Page API key from [app.poli.page](https://app.poli.page)
 
 ## Install
 
 ```bash
-go get github.com/poli-page/gin
+go get github.com/poli-page/gin github.com/poli-page/sdk-go@v0.11.0
 ```
 
 Set your key in the environment:
 
 ```
-POLI_PAGE_API_KEY=pp_test_your_key_here
+POLI_PAGE_API_KEY=pp_sandbox_your_key_here
 ```
+
+An API key is `pp_{environment}_{32 lowercase hex}`. It belongs to one environment of your organization, and that environment's published copy of the project is the one rendered:
+
+| Environment                           | Key            | Watermark | Counted |
+| ------------------------------------- | -------------- | --------- | ------- |
+| `sandbox` (every org)                 | `pp_sandbox_…` | yes       | no      |
+| `live` (every org, deletable on Pro+) | `pp_live_…`    | no        | yes     |
+| created on Pro+ (e.g. `staging`)      | `pp_staging_…` | no        | yes     |
+
+"Counted" means the render counts toward the organization's monthly PDF quota.
 
 Verify everything is wired end-to-end with the bundled smoke-test binary:
 
@@ -41,7 +52,6 @@ Verify everything is wired end-to-end with the bundled smoke-test binary:
 go run github.com/poli-page/gin/cmd/polipage-render \
     --project=getting-started \
     --template=welcome \
-    --template-version=1.0.0 \
     --data='{"name":"World"}' \
     -o welcome.pdf
 ```
@@ -82,14 +92,13 @@ func invoiceHandler(c *gin.Context) {
 	id := c.Param("id")
 	client := polipagegin.ClientFrom(c)
 
-	pdf, err := client.Render.PDF(c.Request.Context(), polipage.ProjectModeInput{
+	pdf, err := client.Render.PDF(c.Request.Context(), polipage.RenderInput{
 		Project:  "billing",
 		Template: "invoice",
-		Version:  polipage.Opt("1.0.0"),
 		Data:     map[string]any{"invoiceId": id},
 	})
 	if err != nil {
-		polipagegin.WriteError(c, err)
+		_ = c.Error(err) // answered by the middleware's error handler
 		return
 	}
 
@@ -107,7 +116,7 @@ You either construct the SDK client yourself with `option.With*` and pass it to 
 
 | Variable | Default | Description |
 |---|---|---|
-| `POLI_PAGE_API_KEY` | _required_ | Key starting with `pp_test_` or `pp_live_`. |
+| `POLI_PAGE_API_KEY` | _required_ | Your API key, `pp_{environment}_…` (see the key table above). A missing or empty value is an error. Any other value is accepted: one that does not match `pp_{environment}_{32 lowercase hex}` logs one `log/slog` warning (it names the expected format and shows no part of the key, not even its `pp_{environment}_` part) and the API decides whether the key is valid (`401 INVALID_API_KEY`). |
 | `POLI_PAGE_BASE_URL` | SDK default | Override the API origin. |
 | `POLI_PAGE_TIMEOUT` | SDK default | Per-request timeout, parsed by `time.ParseDuration` (`30s`, `2m`). |
 | `POLI_PAGE_MAX_RETRIES` | SDK default | Integer in `[0, 10]`. |
@@ -128,14 +137,15 @@ client := polipage.NewClient(cfg.Options()...)
 
 | Symbol | Purpose |
 |---|---|
-| `polipagegin.Middleware(client)` | gin.HandlerFunc that attaches the SDK client to the gin context. |
+| `polipagegin.Middleware(client, opts...)` | gin.HandlerFunc that attaches the SDK client to the gin context and answers a queued `*polipage.Error` (the error handler, on by default). |
+| `polipagegin.WithoutErrorHandler()` | `Middleware` option that turns the error handler off. |
 | `polipagegin.ClientFrom(c)` | Returns the per-request `*polipage.Client`; panics with a clear message if the middleware was not installed. |
 | `polipagegin.PDF(c, bytes, opts)` | Writes a buffered PDF response with the right headers. |
 | `polipagegin.PDFStream(c, reader, opts)` | Streams an `io.Reader` (typically from `Render.PDFStream`) to the client. |
 | `polipagegin.Preview(c, html)` | Writes an HTML preview response (`text/html; charset=utf-8`, `no-store, private`). |
 | `polipagegin.DocumentRedirect(c, descriptor)` | 302 redirect to a `DocumentDescriptor.PresignedPDFURL`. |
-| `polipagegin.ErrorMiddleware()` | gin.HandlerFunc that converts any `*polipage.Error` queued in `c.Errors` into a typed JSON response. |
-| `polipagegin.WriteError(c, err)` | Per-handler version of `ErrorMiddleware` for code paths that prefer explicit error rendering. |
+| `polipagegin.ErrorMiddleware()` | The error handler alone, for an app that turned it off in `Middleware` and installs it elsewhere. |
+| `polipagegin.WriteError(c, err)` | Per-handler version of the error handler for code paths that prefer explicit error rendering. |
 | `polipagegin.Config` / `polipagegin.FromEnv()` | Env-driven configuration loader. |
 | `cmd/polipage-render` | Smoke-test binary that renders a template end-to-end. |
 
@@ -147,7 +157,7 @@ The SDK returns a single `*polipage.Error` type with predicate methods rather th
 
 - **Auth** — `err.IsAuthError()` (HTTP 401/403, sentinels `polipage.ErrUnauthorized` / `polipage.ErrForbidden`).
 - **Rate limit** — `err.IsRateLimitError()` (HTTP 429, sentinel `polipage.ErrRateLimit`).
-- **Validation** — `err.IsValidationError()` (HTTP 400, sentinel `polipage.ErrValidation`). Template, data, or version rejected.
+- **Validation** — `err.IsValidationError()` (HTTP 400, sentinel `polipage.ErrValidation`). Template or data rejected.
 - **Network / transport** — `err.IsNetworkError()` (connection, DNS, TLS, or timeout).
 
 Handle them inline:
@@ -177,11 +187,32 @@ if err != nil {
 }
 ```
 
-Or install `polipagegin.ErrorMiddleware()` once and skip the boilerplate — 4xx/5xx pass through unchanged and network/timeout becomes a 502 with `code: "NETWORK_ERROR"`. The middleware only transforms `*polipage.Error` queued in `c.Errors`; other failures fall through to whatever you have downstream.
+Or queue the error with `c.Error(err)` and let the error handler answer.
+
+### Error handler
+
+`polipagegin.Middleware(client)` installs an error handler by default. When a handler queues a `*polipage.Error` with `c.Error(err)` and writes no response, the middleware answers with `Content-Type: application/json` and the SDK's `err.ToPayload()` as the body, unchanged:
+
+```json
+{ "code": "TEMPLATE_NOT_FOUND", "message": "Template 'does-not-exist' not found in project 'getting-started'.", "status": 404, "requestId": "req_…" }
+```
+
+- The HTTP status is the payload's `status`: the API's status for an API error, `503` for `network_error` and `504` for `timeout`.
+- An SDK error with no status (for example `aborted`) answers `500`, and the body keeps `"status": null`. `requestId` is `null` when the API sent none.
+- `code` and `message` are the SDK's, verbatim.
+- Only `*polipage.Error` is handled (the last error on `c.Errors`); any other error is left for your own error handling, and a response the handler already wrote is never overwritten. Headers set for another answer (`Content-Disposition`, `X-Accel-Buffering`, `Content-Length`, a PDF `Content-Type`) are dropped from the JSON answer.
+
+Turn it off with one option:
+
+```go
+r.Use(polipagegin.Middleware(client, polipagegin.WithoutErrorHandler()))
+```
+
+`polipagegin.ErrorMiddleware()` is the same handler on its own, for when you turn it off in `Middleware` and want it somewhere else in the chain. `polipagegin.WriteError(c, err)` writes the same answer from inside a handler.
 
 ## Example app
 
-A runnable Gin application that exercises every SDK demo step lives in [`example-app/`](example-app/). It serves an interactive dashboard at `http://127.0.0.1:8080/` with one button per SDK feature, inline `<iframe>` previews for PDFs, and pretty-printed JSON for stored-document operations.
+A runnable Gin application that exercises every SDK demo step lives in [`example-app/`](example-app/). It serves an interactive dashboard at `http://127.0.0.1:8080/` with one button per SDK feature, inline `<iframe>` previews for PDFs, and pretty-printed JSON for stored-document operations. It reads `POLI_PAGE_API_KEY` (a `pp_sandbox_…` key) and, optionally, `POLI_PAGE_BASE_URL`, and renders the `getting-started` project's `welcome` template. It serves the demo routes at the root: `GET /render/pdf` answers the PDF, `GET /documents/{id}` answers a `302` redirect to the document's presigned PDF URL, `GET /documents/{id}/preview`, `GET /documents/{id}/thumbnails` and `DELETE /documents/{id}` call the matching SDK methods, and `GET /errors/not-found` renders the `does-not-exist` template and answers `404` with code `TEMPLATE_NOT_FOUND` through the default error handler. Use a fresh organization: one that renamed, deleted or removed `getting-started` from `sandbox` gets `404 PROJECT_NOT_FOUND` or `404 PROJECT_NOT_IN_ENVIRONMENT`. The app also reads a `.env` file from its working directory, without overriding variables already set.
 
 ```bash
 cd example-app
@@ -209,6 +240,16 @@ The supported Go versions follow the upstream policy of "two latest stable relea
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### Contract tests
+
+`example-app/contract_test.go` runs the integration cases (`impl.*`) of the [Poli Page API contract](https://github.com/poli-page/api-contract) against the example app, with its SDK pointed at a local server. CI runs them against the pinned contract version. Locally, from `example-app/`:
+
+```bash
+POLI_CONTRACT=<path to contract.json> go test ./...
+```
+
+Without `POLI_CONTRACT` the test is skipped (and fails when `CI` is set). Cases allowed to fail are listed, with the reason, in `example-app/testdata/contract-skip.json`.
 
 ## License
 

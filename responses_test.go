@@ -1,8 +1,12 @@
 package polipagegin_test
 
 import (
+	"bufio"
 	"bytes"
+	"encoding/json"
 	"errors"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -12,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	polipagegin "github.com/poli-page/gin"
 	polipage "github.com/poli-page/sdk-go"
+	"github.com/poli-page/sdk-go/option"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -195,13 +200,17 @@ func TestPDFStream_MidStreamErrorAttachedToGinErrors(t *testing.T) {
 	reader := &erroringReader{data: partial, err: fail}
 
 	c, w := newResponseTestContext()
-	polipagegin.PDFStream(c, reader, polipagegin.PDFOptions{Filename: "x.pdf"})
+	// A ResponseRecorder cannot be hijacked: PDFStream aborts with
+	// net/http's ErrAbortHandler panic instead.
+	assert.PanicsWithValue(t, http.ErrAbortHandler, func() {
+		polipagegin.PDFStream(c, reader, polipagegin.PDFOptions{Filename: "x.pdf"})
+	})
 
 	require.Len(t, c.Errors, 1, "exactly one error queued on c.Errors")
 	last := c.Errors.Last()
 	require.NotNil(t, last)
 
-	// CLAUDE.md §10.4: the wrapped error lives on .Err — direct errors.Is
+	// The wrapped error lives on .Err — direct errors.Is
 	// against c.Errors.Last() (no .Err) silently fails.
 	assert.ErrorIs(t, last.Err, fail,
 		"the mid-stream error must reach c.Errors via .Err so logging middleware sees it")
@@ -221,4 +230,162 @@ func TestPDFStream_PanicsOnNilReader(t *testing.T) {
 			polipagegin.PDFStream(c, nil, polipagegin.PDFOptions{Filename: "x.pdf"})
 		},
 		"nil reader is a programmer error and must panic loudly, not produce an empty response")
+}
+
+// firstReadFails is a stream whose first Read fails, as the SDK's PDF
+// stream does when the presigned download fails.
+type firstReadFails struct{ err error }
+
+func (r firstReadFails) Read([]byte) (int, error) { return 0, r.err }
+
+func TestPDFStream_FirstReadSDKErrorIsAnsweredAsJSONByTheErrorHandler(t *testing.T) {
+	sdkErr := &polipage.Error{Code: "DOWNLOAD_FAILED", StatusCode: http.StatusForbidden, Message: "Failed to download PDF: HTTP 403"}
+	r := gin.New()
+	r.Use(polipagegin.Middleware(polipage.NewClient(option.WithAPIKey(sandboxKey))))
+	r.GET("/", func(c *gin.Context) {
+		polipagegin.PDFStream(c, firstReadFails{err: sdkErr}, polipagegin.PDFOptions{Filename: "a.pdf"})
+	})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/", http.NoBody))
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Equal(t, "application/json; charset=utf-8", w.Header().Get("Content-Type"))
+	assert.Empty(t, w.Header().Get("Content-Disposition"))
+	assert.Empty(t, w.Header().Get("X-Accel-Buffering"))
+	payload, err := json.Marshal(sdkErr.ToPayload())
+	require.NoError(t, err)
+	assert.JSONEq(t, string(payload), w.Body.String())
+}
+
+func TestPDFStream_FirstReadFailureSetsNoHeader(t *testing.T) {
+	c, w := newResponseTestContext()
+	polipagegin.PDFStream(c, firstReadFails{err: errors.New("boom")}, polipagegin.PDFOptions{Filename: "a.pdf"})
+
+	require.Len(t, c.Errors, 1)
+	assert.Empty(t, w.Header().Get("Content-Type"))
+	assert.Empty(t, w.Header().Get("Content-Disposition"))
+	assert.Empty(t, w.Header().Get("X-Accel-Buffering"))
+	assert.False(t, c.Writer.Written())
+}
+
+func TestPDFStream_EmptyStreamAnswers200WithPDFHeaders(t *testing.T) {
+	c, w := newResponseTestContext()
+	polipagegin.PDFStream(c, bytes.NewReader(nil), polipagegin.PDFOptions{Filename: "a.pdf"})
+
+	assert.Empty(t, c.Errors)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/pdf", w.Header().Get("Content-Type"))
+	assert.True(t, c.Writer.Written())
+}
+
+// midStreamServer serves GET / with a PDFStream that sends a first chunk
+// and then fails with an SDK error, behind gin.Recovery and Middleware.
+func midStreamServer(t *testing.T, http2, recovery bool) *httptest.Server {
+	t.Helper()
+	sdkErr := &polipage.Error{Code: polipage.ErrCodeDownloadFailed, Message: "Failed to download PDF: network error"}
+	r := gin.New()
+	if recovery {
+		r.Use(gin.Recovery())
+	}
+	r.Use(polipagegin.Middleware(polipage.NewClient(option.WithAPIKey(sandboxKey))))
+	r.GET("/", func(c *gin.Context) {
+		polipagegin.PDFStream(c, &erroringReader{data: []byte("%PDF-1.4 partial"), err: sdkErr}, polipagegin.PDFOptions{Filename: "a.pdf"})
+	})
+	srv := httptest.NewUnstartedServer(r)
+	if http2 {
+		srv.EnableHTTP2 = true
+		srv.StartTLS()
+	} else {
+		srv.Start()
+	}
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func getBody(t *testing.T, srv *httptest.Server) (*http.Response, []byte, error) {
+	t.Helper()
+	resp, err := srv.Client().Get(srv.URL)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	body, readErr := io.ReadAll(resp.Body)
+	return resp, body, readErr
+}
+
+func TestPDFStream_MidStreamFailureCutsTheConnection(t *testing.T) {
+	resp, body, readErr := getBody(t, midStreamServer(t, false, true))
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "the status was sent before the failure")
+	assert.Equal(t, "application/pdf", resp.Header.Get("Content-Type"))
+	assert.Equal(t, "%PDF-1.4 partial", string(body), "the bytes sent before the failure arrive")
+	assert.ErrorIs(t, readErr, io.ErrUnexpectedEOF,
+		"the client must see a truncated transfer, not a chunked body that ends cleanly")
+}
+
+func TestPDFStream_MidStreamFailureOverHTTP2AbortsTheStream(t *testing.T) {
+	// HTTP/2 writers cannot be hijacked: PDFStream panics with
+	// http.ErrAbortHandler and net/http resets the stream (without
+	// gin.Recovery, which would catch that panic).
+	resp, body, readErr := getBody(t, midStreamServer(t, true, false))
+
+	assert.Equal(t, 2, resp.ProtoMajor)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "%PDF-1.4 partial", string(body))
+	assert.Error(t, readErr, "the client must see the stream reset")
+}
+
+// noUnwrapWriter wraps gin's writer the way some middleware do (for
+// example gin-contrib/gzip): it embeds gin.ResponseWriter, so it has
+// Hijack, but no Unwrap.
+type noUnwrapWriter struct{ gin.ResponseWriter }
+
+func TestPDFStream_MidStreamFailureBehindAWrapperWithoutUnwrapPanicsWithErrAbortHandler(t *testing.T) {
+	reader := &erroringReader{data: []byte("%PDF-1.4 partial"), err: errors.New("cut")}
+	c, w := newResponseTestContext()
+	c.Writer = noUnwrapWriter{c.Writer}
+
+	// The wrapper's Hijack reaches gin's, which panics on a recorder; the
+	// helper must still abort with exactly http.ErrAbortHandler.
+	assert.PanicsWithValue(t, http.ErrAbortHandler, func() {
+		polipagegin.PDFStream(c, reader, polipagegin.PDFOptions{Filename: "x.pdf"})
+	})
+	require.Len(t, c.Errors, 1)
+	assert.Equal(t, "%PDF-1.4 partial", w.Body.String())
+}
+
+func TestPDFStream_MidStreamFailureBehindAWrapperWithoutUnwrapCutsTheConnection(t *testing.T) {
+	sdkErr := &polipage.Error{Code: polipage.ErrCodeDownloadFailed, Message: "Failed to download PDF: network error"}
+	r := gin.New()
+	r.Use(gin.Recovery(), func(c *gin.Context) {
+		c.Writer = noUnwrapWriter{c.Writer}
+		c.Next()
+	})
+	r.GET("/", func(c *gin.Context) {
+		polipagegin.PDFStream(c, &erroringReader{data: []byte("%PDF-1.4 partial"), err: sdkErr}, polipagegin.PDFOptions{Filename: "a.pdf"})
+	})
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+
+	resp, body, readErr := getBody(t, srv)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "%PDF-1.4 partial", string(body))
+	assert.ErrorIs(t, readErr, io.ErrUnexpectedEOF, "the wrapper's own Hijack still cuts an HTTP/1.1 connection")
+}
+
+// panickingHijackWriter is a wrapper whose Hijack has a bug of its own.
+type panickingHijackWriter struct{ gin.ResponseWriter }
+
+func (panickingHijackWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	panic("boom: unrelated bug")
+}
+
+func TestPDFStream_MidStreamFailureKeepsAnUnrelatedHijackPanic(t *testing.T) {
+	reader := &erroringReader{data: []byte("%PDF-1.4 partial"), err: errors.New("cut")}
+	c, _ := newResponseTestContext()
+	c.Writer = panickingHijackWriter{c.Writer}
+
+	// Only gin's type assertion panic means "cannot hijack"; a wrapper's
+	// own bug must reach the caller unchanged, not become ErrAbortHandler.
+	assert.PanicsWithValue(t, "boom: unrelated bug", func() {
+		polipagegin.PDFStream(c, reader, polipagegin.PDFOptions{Filename: "x.pdf"})
+	})
 }

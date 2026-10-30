@@ -1,0 +1,35 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      # Daily: a new API contract version (poli-page/api-contract) arrives as a PR at once.
+      interval: daily
+    # Dependabot waits 3 days after a release by default; the contract is exempt.
+    cooldown:
+      default-days: 3
+      exclude:
+        - 'poli-page/api-contract'
+    groups:
+      # The API contract gets PRs of its own: a contract bump shows what the
+      # API change breaks, never mixed with other action bumps.
+      api-contract:
+        patterns:
+          - 'poli-page/api-contract'
+      actions:
+        patterns:
+          - '*'
+        exclude-patterns:
+          - 'poli-page/api-contract'
+
+  # The library module (and the Poli Page SDK it wraps).
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+
+  # The example app module.
+  - package-ecosystem: gomod
+    directory: /example-app
+    schedule:
+      interval: weekly

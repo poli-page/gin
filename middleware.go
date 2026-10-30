@@ -17,23 +17,51 @@ const ContextKey = "polipagegin.client"
 // request's *gin.Context. Pull it back out inside a handler with
 // ClientFrom.
 //
+// The middleware also ships the error handler, on by default: when a
+// handler queues a *polipage.Error with c.Error(err) and writes no
+// response, the middleware answers with the error's ToPayload() body
+// ({code, message, status, requestId}) and its status (500 when the
+// payload has none). See ErrorMiddleware for the details. Pass
+// WithoutErrorHandler() to turn it off.
+//
 // Passing a nil client panics at install time — the failure mode we want
 // is "the app fails to boot" not "the first request crashes deep inside
 // the SDK". Reuse one *polipage.Client per process (it is safe for
 // concurrent use); do not construct a fresh one per request.
 //
-// CLAUDE.md §10.1: the application must install gin.Recovery() so a
-// ClientFrom panic from a missing middleware surfaces as HTTP 500 instead
-// of crashing the process. gin.Default() includes Recovery; gin.New()
-// does not.
-func Middleware(client *polipage.Client) gin.HandlerFunc {
+// The application must install gin.Recovery() so a ClientFrom panic from
+// a missing middleware surfaces as HTTP 500 instead of crashing the
+// process. gin.Default() includes Recovery; gin.New() does not.
+func Middleware(client *polipage.Client, opts ...MiddlewareOption) gin.HandlerFunc {
 	if client == nil {
 		panic("polipagegin: Middleware called with nil client")
+	}
+	cfg := middlewareConfig{errorHandler: true}
+	for _, opt := range opts {
+		opt(&cfg)
 	}
 	return func(c *gin.Context) {
 		c.Set(ContextKey, client)
 		c.Next()
+		if cfg.errorHandler {
+			respondQueuedError(c)
+		}
 	}
+}
+
+// MiddlewareOption configures Middleware.
+type MiddlewareOption func(*middlewareConfig)
+
+type middlewareConfig struct {
+	errorHandler bool
+}
+
+// WithoutErrorHandler turns off the error handler Middleware installs by
+// default: a *polipage.Error queued on c.Errors is then left for the
+// application's own error handling (or ErrorMiddleware, installed
+// elsewhere).
+func WithoutErrorHandler() MiddlewareOption {
+	return func(cfg *middlewareConfig) { cfg.errorHandler = false }
 }
 
 // ClientFrom returns the *polipage.Client stored on c by Middleware.

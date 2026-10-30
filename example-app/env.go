@@ -11,8 +11,8 @@ import (
 
 // loadDotEnv reads KEY=VALUE pairs from path and pushes them into the
 // process environment ONLY when the key is not already set there.
-// Real shell exports always win — same rule the Symfony and NestJS
-// example apps follow (INTEGRATIONS_PLAN.md §"Cross-cutting DX patterns" §2).
+// Real shell exports always win — same rule the other Poli Page
+// integration example apps follow.
 //
 // Hand-rolled (no joho/godotenv dependency) — the parser is intentionally
 // minimal: blank lines and comments (lines starting with '#') are
