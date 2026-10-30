@@ -183,10 +183,14 @@ func TestRenderAgainstLiveAPI(t *testing.T) {
 		t.Skip("POLI_PAGE_API_KEY is not a pp_sandbox_ key")
 	}
 
-	client := polipage.NewClient(
+	opts := []option.RequestOption{
 		option.WithAPIKey(key),
-		option.WithTimeout(30*time.Second),
-	)
+		option.WithTimeout(30 * time.Second),
+	}
+	if baseURL := os.Getenv("POLI_PAGE_BASE_URL"); baseURL != "" {
+		opts = append(opts, option.WithBaseURL(baseURL))
+	}
+	client := polipage.NewClient(opts...)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -205,7 +209,7 @@ func TestRenderAgainstLiveAPI(t *testing.T) {
 }
 ```
 
-Run with `go test -tags=integration ./tests/integration/...`. The test proves DI/middleware wiring + response shape + a real round-trip — nothing the SDK already tests.
+Run with `go test -tags=integration ./tests/integration/...`. `POLI_PAGE_BASE_URL` is optional: set, the test targets that API host; unset, the SDK default. The test proves DI/middleware wiring + response shape + a real round-trip — nothing the SDK already tests.
 
 ## Gotchas
 

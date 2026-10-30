@@ -4,6 +4,9 @@ All notable changes to `poli-page/gin` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+### Changed
+- The live API CI job passes the optional `POLI_PAGE_BASE_URL` secret to the integration test and the CLI smoke test (unset: the SDK default), next to the `pp_sandbox_` key in `POLI_PAGE_API_KEY`. The integration test passes `POLI_PAGE_BASE_URL` to the client when it is set.
+
 ## [0.11.0] - 2026-10-30
 
 First release. The version matches the `github.com/poli-page/sdk-go` `v0.11.0` release it requires. Entries marked **Breaking** change behaviour of the pre-release code on `main`; no `0.1.0` was ever tagged.

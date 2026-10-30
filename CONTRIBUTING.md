@@ -8,7 +8,7 @@ Thanks for your interest in improving this package. This guide covers setup, tes
 go mod download
 ```
 
-Set `POLI_PAGE_API_KEY` to a `pp_sandbox_…` key before running integration tests.
+Set `POLI_PAGE_API_KEY` to a `pp_sandbox_…` key before running integration tests. Set `POLI_PAGE_BASE_URL` too to target another API host; unset, the SDK default is used. The live API CI job reads the same two names from repository secrets: `POLI_PAGE_API_KEY` (a `pp_sandbox_` key) and the optional `POLI_PAGE_BASE_URL`.
 
 ## Tests
 

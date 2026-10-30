@@ -89,11 +89,15 @@ jobs:
         if: steps.key.outputs.present == 'true'
         with:
           go-version: '1.25'
-      - name: Live API test (prod, sandbox key)
+      - name: Live API test (sandbox key)
         if: steps.key.outputs.present == 'true'
         env:
           POLI_PAGE_API_KEY: ${{ secrets.POLI_PAGE_API_KEY }}
+          POLI_PAGE_BASE_URL: ${{ secrets.POLI_PAGE_BASE_URL }}
         run: |
+          # An unset secret expands to an empty string; drop it so the SDK
+          # falls back to its default base URL.
+          if [ -z "$POLI_PAGE_BASE_URL" ]; then unset POLI_PAGE_BASE_URL; fi
           if [ ! -d tests/integration ] || [ -z "$(ls -A tests/integration 2>/dev/null)" ]; then
             echo "No tests/integration yet; skipping"
             exit 0
@@ -103,7 +107,11 @@ jobs:
         if: steps.key.outputs.present == 'true'
         env:
           POLI_PAGE_API_KEY: ${{ secrets.POLI_PAGE_API_KEY }}
+          POLI_PAGE_BASE_URL: ${{ secrets.POLI_PAGE_BASE_URL }}
         run: |
+          # An unset secret expands to an empty string; drop it so the SDK
+          # falls back to its default base URL.
+          if [ -z "$POLI_PAGE_BASE_URL" ]; then unset POLI_PAGE_BASE_URL; fi
           if [ ! -d cmd/polipage-render ]; then
             echo "No cmd/polipage-render yet; skipping"
             exit 0
