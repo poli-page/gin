@@ -8,7 +8,7 @@ All notable changes to `poli-page/gin` are documented here. Format follows [Keep
 - **Breaking:** API keys are `pp_{environment}_{32 lowercase hex}` for any environment (`pp_sandbox_…`, `pp_live_…`, `pp_staging_…`). `FromEnv` no longer rejects a key by its `pp_test_` / `pp_live_` prefix: a missing or empty `POLI_PAGE_API_KEY` is still an error, and any other value that does not match the key format logs one `log/slog` warning (it names the expected format and shows no part of the key, not even its `pp_{environment}_` part) and loads, so the API answers with its own error.
 - **Breaking:** requires `github.com/poli-page/sdk-go` `v0.11.0`, the SDK release with environments: renders take a `polipage.RenderInput` with no `Version`, and the key selects the environment whose published copy is rendered. Both `go.mod` files require the published module instead of a `replace` to a sibling `../sdk-go` checkout.
 - **Breaking:** `Middleware(client)` installs the error handler by default. A `*polipage.Error` queued with `c.Error(err)` is answered with `Content-Type: application/json`, the error's `ToPayload()` as the body (`{code, message, status, requestId}`, `null` when unknown) and its `status` as the HTTP status (`503` for `network_error`, `504` for `timeout`, `500` when the payload has no status). Turn it off with `Middleware(client, polipagegin.WithoutErrorHandler())`. A response the handler already wrote is never overwritten.
-- **Breaking:** `ErrorMiddleware` and `WriteError` write the same body: an error with no status now answers `500` with `"status": null` in the body instead of `"status": 500`.
+- **Breaking:** `ErrorMiddleware` and `WriteError` write the same body: an error with no status now answers `500` with `"status": null` in the body instead of `"status": 500`, and `requestId` is `null` instead of `""` when the API sent none. The JSON answer drops headers set for another answer (`Content-Disposition`, `X-Accel-Buffering`, `Content-Length`) and always has `Content-Type: application/json`.
 - **Breaking:** example app: the demo routes move from `/api/...` to the root (`GET /render/pdf`, `GET /documents/{id}`, `GET /errors/not-found`, ...). `GET /errors/not-found` replaces `GET /api/render/error`: it renders the `does-not-exist` template of `getting-started` with `{}` and answers `404` with code `TEMPLATE_NOT_FOUND` through the default error handler. `GET /documents/{id}` still answers a `302` redirect to the presigned PDF URL. The app reads `.env` from its working directory.
 - The integration test skips unless `POLI_PAGE_API_KEY` is a `pp_sandbox_…` key.
 
@@ -21,6 +21,7 @@ All notable changes to `poli-page/gin` are documented here. Format follows [Keep
 - Example app: `GET /render/preview` and its dashboard button, since the SDK no longer has `Render.Preview`. `GET /documents/:id/preview` (`Documents.Preview`) stays.
 
 ### Fixed
+- `PDFStream` reads the first chunk before it sets any header. A failure on that first read (for example the SDK's `DOWNLOAD_FAILED`) is queued with nothing set, so the error handler answers it as JSON instead of JSON under `Content-Type: application/pdf` and `Content-Disposition: attachment`.
 - `PDF` / `PDFStream`: control characters (CR/LF, TAB, DEL, C1) are now stripped from the `Content-Disposition` filename instead of surviving as `_` in the ASCII slot and `%0D%0A`-style escapes in the `filename*` slot; a filename made only of control characters falls back to `document.pdf`.
 
 ## [0.1.0] — 2026-06-01
@@ -39,7 +40,7 @@ All notable changes to `poli-page/gin` are documented here. Format follows [Keep
 - CI matrix: Go `1.25` × Gin `v1.10`, plus a forward cell on `tip` (allowed to fail).
 
 ### Notes
-- `github.com/poli-page/sdk-go` is consumed via `go get` once published. Until then, a `replace` directive in `go.mod` resolves it from `../sdk-go/`; see `docs/spec/gin-integration-specification.md` §12.
+- `github.com/poli-page/sdk-go` is consumed via `go get` once published. Until then, a `replace` directive in `go.mod` resolves it from `../sdk-go/`.
 - The integration is server-side only and ships no Edge/wasm build.
 - `gin.Recovery()` is a hard prerequisite: `polipagegin.ClientFrom` panics on misuse, and that panic must be caught by Gin's recovery middleware. `gin.Default()` includes it; `gin.New()` does not (you wire `r.Use(gin.Recovery())` yourself before `polipagegin.Middleware`).
 - The example app sets `gin.SetMode(gin.ReleaseMode)`, registers `gin.Recovery` explicitly, calls `r.SetTrustedProxies(nil)`, and drains in-flight renders via `http.Server.Shutdown` on `SIGTERM`. Production-shape on purpose — consumers copy this `main.go`.

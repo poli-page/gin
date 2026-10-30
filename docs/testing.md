@@ -225,5 +225,4 @@ Run with `go test -tags=integration ./tests/integration/...`. The test proves DI
 
 - [README → Example app](../README.md#example-app) — the demo app is the manual smoke test; this doc covers the automated layer below it.
 - [docs/middleware.md](middleware.md) — the production wiring the tests bypass.
-- [docs/spec/gin-integration-specification.md](spec/gin-integration-specification.md) §13 — the full testing strategy.
 - Gin docs on [testing](https://github.com/gin-gonic/gin#testing) — `httptest.NewRecorder` + `gin.New()` is the primitive.

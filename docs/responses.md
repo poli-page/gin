@@ -117,7 +117,7 @@ Empty `Filename` defaults to `document.pdf`.
 
 ## Gotchas
 
-- **`PDFStream` does not close the reader.** Helper takes `io.Reader` on purpose so it does not invade `io.ReadCloser` semantics — `defer body.Close()` belongs in the handler immediately after the SDK call. See spec §8.3 and the symfony-bundle's matching decision.
+- **`PDFStream` does not close the reader.** Helper takes `io.Reader` on purpose so it does not invade `io.ReadCloser` semantics — `defer body.Close()` belongs in the handler immediately after the SDK call. The Symfony bundle made the same decision.
 
 - **`Cache-Control: no-store, private` is non-negotiable.** Poli Page documents are tenant-scoped; a shared proxy must never cache them. Override by writing your own headers *before* calling the helper (the helper uses `c.Writer.Header().Set` which does not overwrite a header that downstream middleware has already set unless… don't, the default is the safe one).
 
@@ -134,4 +134,3 @@ Empty `Filename` defaults to `document.pdf`.
 - [README → API at a glance](../README.md#api-at-a-glance) — the parent listing.
 - [docs/streaming.md](streaming.md) — when to pick `PDFStream` over `PDF`.
 - [docs/middleware.md](middleware.md) — how the client gets to the handler in the first place.
-- [docs/spec/gin-integration-specification.md](spec/gin-integration-specification.md) §8 — the exhaustive header contract these helpers implement.

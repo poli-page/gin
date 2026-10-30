@@ -120,5 +120,4 @@ The `if` guard means the step is silently skipped when forks open PRs without se
 ## Related
 
 - [README → Install](../README.md#install) — the one-liner that invokes this binary.
-- [docs/spec/gin-integration-specification.md](spec/gin-integration-specification.md) §9 — the full CLI design (exit code table, flag rationale, why Cobra over `flag`).
 - The `poli-page:render` console command of [poli-page/symfony-bundle](https://github.com/poli-page/symfony-bundle) — the cross-stack reference. Flags and exit codes match by design.
