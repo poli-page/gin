@@ -25,6 +25,9 @@ import (
 // from forks that lack the secret stay green and a key of a counted
 // environment (live, staging, ...) never renders from a test.
 //
+// The client targets the SDK default base URL, or POLI_PAGE_BASE_URL when
+// it is set (CI passes the optional secret of the same name).
+//
 // Run locally:
 //
 //	POLI_PAGE_API_KEY=pp_sandbox_... \
@@ -38,6 +41,9 @@ func TestRenderAgainstLiveAPI(t *testing.T) {
 	opts := []option.RequestOption{
 		option.WithAPIKey(key),
 		option.WithTimeout(30 * time.Second),
+	}
+	if baseURL := os.Getenv("POLI_PAGE_BASE_URL"); baseURL != "" {
+		opts = append(opts, option.WithBaseURL(baseURL))
 	}
 	client := polipage.NewClient(opts...)
 
