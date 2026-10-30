@@ -4,7 +4,7 @@ go 1.25
 
 require (
 	github.com/gin-gonic/gin v1.10.0
-	github.com/poli-page/sdk-go v0.9.1-0.20261026173041-ec93e9a9b617
+	github.com/poli-page/sdk-go v0.11.0
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.10.0
 )
