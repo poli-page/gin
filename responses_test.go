@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -197,7 +198,11 @@ func TestPDFStream_MidStreamErrorAttachedToGinErrors(t *testing.T) {
 	reader := &erroringReader{data: partial, err: fail}
 
 	c, w := newResponseTestContext()
-	polipagegin.PDFStream(c, reader, polipagegin.PDFOptions{Filename: "x.pdf"})
+	// A ResponseRecorder cannot be hijacked: PDFStream aborts with
+	// net/http's ErrAbortHandler panic instead.
+	assert.PanicsWithValue(t, http.ErrAbortHandler, func() {
+		polipagegin.PDFStream(c, reader, polipagegin.PDFOptions{Filename: "x.pdf"})
+	})
 
 	require.Len(t, c.Errors, 1, "exactly one error queued on c.Errors")
 	last := c.Errors.Last()
@@ -271,17 +276,57 @@ func TestPDFStream_EmptyStreamAnswers200WithPDFHeaders(t *testing.T) {
 	assert.True(t, c.Writer.Written())
 }
 
-func TestPDFStream_MidStreamSDKErrorKeepsThePartialPDF(t *testing.T) {
-	sdkErr := &polipage.Error{Code: polipage.ErrCodeNetworkError, Message: "Network request failed"}
+// midStreamServer serves GET / with a PDFStream that sends a first chunk
+// and then fails with an SDK error, behind gin.Recovery and Middleware.
+func midStreamServer(t *testing.T, http2 bool, recovery bool) *httptest.Server {
+	t.Helper()
+	sdkErr := &polipage.Error{Code: polipage.ErrCodeDownloadFailed, Message: "Failed to download PDF: network error"}
 	r := gin.New()
+	if recovery {
+		r.Use(gin.Recovery())
+	}
 	r.Use(polipagegin.Middleware(polipage.NewClient(option.WithAPIKey(sandboxKey))))
 	r.GET("/", func(c *gin.Context) {
 		polipagegin.PDFStream(c, &erroringReader{data: []byte("%PDF-1.4 partial"), err: sdkErr}, polipagegin.PDFOptions{Filename: "a.pdf"})
 	})
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/", http.NoBody))
+	srv := httptest.NewUnstartedServer(r)
+	if http2 {
+		srv.EnableHTTP2 = true
+		srv.StartTLS()
+	} else {
+		srv.Start()
+	}
+	t.Cleanup(srv.Close)
+	return srv
+}
 
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "application/pdf", w.Header().Get("Content-Type"))
-	assert.Equal(t, "%PDF-1.4 partial", w.Body.String(), "the error handler never writes over a started stream")
+func getBody(t *testing.T, srv *httptest.Server) (*http.Response, []byte, error) {
+	t.Helper()
+	resp, err := srv.Client().Get(srv.URL)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	body, readErr := io.ReadAll(resp.Body)
+	return resp, body, readErr
+}
+
+func TestPDFStream_MidStreamFailureCutsTheConnection(t *testing.T) {
+	resp, body, readErr := getBody(t, midStreamServer(t, false, true))
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "the status was sent before the failure")
+	assert.Equal(t, "application/pdf", resp.Header.Get("Content-Type"))
+	assert.Equal(t, "%PDF-1.4 partial", string(body), "the bytes sent before the failure arrive")
+	assert.ErrorIs(t, readErr, io.ErrUnexpectedEOF,
+		"the client must see a truncated transfer, not a chunked body that ends cleanly")
+}
+
+func TestPDFStream_MidStreamFailureOverHTTP2AbortsTheStream(t *testing.T) {
+	// HTTP/2 writers cannot be hijacked: PDFStream panics with
+	// http.ErrAbortHandler and net/http resets the stream (without
+	// gin.Recovery, which would catch that panic).
+	resp, body, readErr := getBody(t, midStreamServer(t, true, false))
+
+	assert.Equal(t, 2, resp.ProtoMajor)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "%PDF-1.4 partial", string(body))
+	assert.Error(t, readErr, "the client must see the stream reset")
 }
