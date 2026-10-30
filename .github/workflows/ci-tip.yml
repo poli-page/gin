@@ -12,11 +12,11 @@ jobs:
   test-tip:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # setup-go cannot resolve a literal "tip"; bootstrap with stable, then
       # install the toolchain via golang.org/dl/gotip and put its `go` on PATH
       # so every step below runs under tip without per-step rewrites.
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: 'stable'
           cache: false
