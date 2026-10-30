@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -149,9 +150,10 @@ func PDFStream(c *gin.Context, body io.Reader, opts PDFOptions) {
 // wrapper that implements Unwrap, are looked through, because gin's own
 // Hijack panics when the writer under it cannot hijack. A wrapper without
 // Unwrap (gin-contrib/gzip, for example) stops that walk, so its Hijack
-// may reach gin's and panic: that panic is recovered and treated as "cannot
-// hijack". Without a hijackable writer it panics with http.ErrAbortHandler,
-// always that value.
+// may reach gin's and panic with a type assertion error: that panic is
+// recovered and treated as "cannot hijack" (any other panic is
+// re-raised). Without a hijackable writer it panics with
+// http.ErrAbortHandler, always that value.
 func abortResponse(c *gin.Context) {
 	var w http.ResponseWriter = c.Writer
 	for {
@@ -169,11 +171,16 @@ func abortResponse(c *gin.Context) {
 }
 
 // closeHijacked hijacks and closes the connection behind hj. It reports
-// false when the hijack fails, including when hj's Hijack panics (gin's
-// writer does so when the writer under it is not an http.Hijacker).
+// false when the hijack fails, including when hj's Hijack panics with a
+// type assertion error: gin's writer does so when the writer under it is
+// not an http.Hijacker. Any other panic is a bug elsewhere and is
+// re-raised unchanged.
 func closeHijacked(hj http.Hijacker) (closed bool) {
 	defer func() {
-		if recover() != nil {
+		if r := recover(); r != nil {
+			if _, ok := r.(*runtime.TypeAssertionError); !ok {
+				panic(r)
+			}
 			closed = false
 		}
 	}()

@@ -1,10 +1,12 @@
 package polipagegin_test
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -367,4 +369,23 @@ func TestPDFStream_MidStreamFailureBehindAWrapperWithoutUnwrapCutsTheConnection(
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, "%PDF-1.4 partial", string(body))
 	assert.ErrorIs(t, readErr, io.ErrUnexpectedEOF, "the wrapper's own Hijack still cuts an HTTP/1.1 connection")
+}
+
+// panickingHijackWriter is a wrapper whose Hijack has a bug of its own.
+type panickingHijackWriter struct{ gin.ResponseWriter }
+
+func (panickingHijackWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	panic("boom: unrelated bug")
+}
+
+func TestPDFStream_MidStreamFailureKeepsAnUnrelatedHijackPanic(t *testing.T) {
+	reader := &erroringReader{data: []byte("%PDF-1.4 partial"), err: errors.New("cut")}
+	c, _ := newResponseTestContext()
+	c.Writer = panickingHijackWriter{c.Writer}
+
+	// Only gin's type assertion panic means "cannot hijack"; a wrapper's
+	// own bug must reach the caller unchanged, not become ErrAbortHandler.
+	assert.PanicsWithValue(t, "boom: unrelated bug", func() {
+		polipagegin.PDFStream(c, reader, polipagegin.PDFOptions{Filename: "x.pdf"})
+	})
 }
