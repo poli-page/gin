@@ -3,6 +3,7 @@ on:
   push:
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   test:
@@ -68,35 +69,41 @@ jobs:
 
   integration:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.25'
-      - name: Integration test (gated on POLI_PAGE_API_KEY)
+      - name: Check for the sandbox API key
+        id: key
         env:
           POLI_PAGE_API_KEY: ${{ secrets.POLI_PAGE_API_KEY }}
-          POLI_PAGE_TEST_BASE_URL: ${{ secrets.POLI_PAGE_TEST_BASE_URL }}
         run: |
-          if [ -z "$POLI_PAGE_API_KEY" ]; then
-            echo "POLI_PAGE_API_KEY not set; skipping integration test"
-            exit 0
-          fi
+          case "$POLI_PAGE_API_KEY" in
+            pp_sandbox_*) echo "present=true" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "::notice::POLI_PAGE_API_KEY is not set or is not a pp_sandbox_ key: skipping the live API test."
+              echo "present=false" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+      - uses: actions/checkout@v4
+        if: steps.key.outputs.present == 'true'
+      - uses: actions/setup-go@v5
+        if: steps.key.outputs.present == 'true'
+        with:
+          go-version: '1.25'
+      - name: Live API test (prod, sandbox key)
+        if: steps.key.outputs.present == 'true'
+        env:
+          POLI_PAGE_API_KEY: ${{ secrets.POLI_PAGE_API_KEY }}
+        run: |
           if [ ! -d tests/integration ] || [ -z "$(ls -A tests/integration 2>/dev/null)" ]; then
             echo "No tests/integration yet; skipping"
             exit 0
           fi
           go test -tags=integration -count=1 ./tests/integration/...
       - name: CLI smoke test
+        if: steps.key.outputs.present == 'true'
         env:
           POLI_PAGE_API_KEY: ${{ secrets.POLI_PAGE_API_KEY }}
-          POLI_PAGE_BASE_URL: ${{ secrets.POLI_PAGE_TEST_BASE_URL }}
         run: |
-          if [ -z "$POLI_PAGE_API_KEY" ]; then
-            echo "POLI_PAGE_API_KEY not set; skipping CLI smoke"
-            exit 0
-          fi
           if [ ! -d cmd/polipage-render ]; then
             echo "No cmd/polipage-render yet; skipping"
             exit 0

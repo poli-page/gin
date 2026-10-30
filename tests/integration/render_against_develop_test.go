@@ -29,8 +29,6 @@ import (
 //
 //	POLI_PAGE_API_KEY=pp_sandbox_... \
 //	go test -tags=integration ./tests/integration/...
-//
-// Set POLI_PAGE_TEST_BASE_URL to override the SDK's default API host.
 func TestRenderAgainstLiveAPI(t *testing.T) {
 	key := os.Getenv("POLI_PAGE_API_KEY")
 	if !strings.HasPrefix(key, "pp_sandbox_") {
@@ -40,9 +38,6 @@ func TestRenderAgainstLiveAPI(t *testing.T) {
 	opts := []option.RequestOption{
 		option.WithAPIKey(key),
 		option.WithTimeout(30 * time.Second),
-	}
-	if v := os.Getenv("POLI_PAGE_TEST_BASE_URL"); v != "" {
-		opts = append(opts, option.WithBaseURL(v))
 	}
 	client := polipage.NewClient(opts...)
 
