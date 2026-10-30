@@ -78,8 +78,8 @@ func DocumentRedirect(c *gin.Context, descriptor *polipage.DocumentDescriptor) {
 // signature takes io.Reader (not io.ReadCloser) to advertise that policy.
 //
 // Passing a nil reader panics: a nil reader is a programmer error, not
-// a runtime fallback. The panic message says so; CLAUDE.md §10.1's
-// gin.Recovery prerequisite turns it into a 500 in the unlikely event
+// a runtime fallback. The panic message says so; the gin.Recovery
+// prerequisite (see Middleware) turns it into a 500 in the unlikely event
 // it slips into production.
 //
 // Mid-stream failures (Read returns a non-EOF error, or Write fails) are

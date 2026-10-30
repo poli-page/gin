@@ -217,7 +217,7 @@ Run with `go test -tags=integration ./tests/integration/...`. The test proves DI
 
 - **`*polipage.Error` is a real struct.** When asserting filter behaviour, construct one directly: `&polipage.Error{Code: "RATE_LIMIT", StatusCode: 429}`. `errors.As` checks inside `polipagegin.WriteError` and your own catch blocks both pass.
 
-- **The narrow interface goes in your app, not in this package.** Don't open a PR adding `Renderer interface{ PDF(...); PDFStream(...); ... }` here — that would be the Big Generic Interface this package explicitly does not ship (CLAUDE.md §2). Every consumer's domain interface is different.
+- **The narrow interface goes in your app, not in this package.** Don't open a PR adding `Renderer interface{ PDF(...); PDFStream(...); ... }` here — that would be the Big Generic Interface this package deliberately does not ship. Every consumer's domain interface is different.
 
 - **Integration tests need a `pp_sandbox_…` key.** Renders with a `pp_live_…` key (or the key of any other environment created on Pro+) count toward your organization's monthly PDF quota; sandbox renders are watermarked and not counted. CI passes the sandbox key via repository secrets.
 

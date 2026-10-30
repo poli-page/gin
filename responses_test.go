@@ -201,7 +201,7 @@ func TestPDFStream_MidStreamErrorAttachedToGinErrors(t *testing.T) {
 	last := c.Errors.Last()
 	require.NotNil(t, last)
 
-	// CLAUDE.md §10.4: the wrapped error lives on .Err — direct errors.Is
+	// The wrapped error lives on .Err — direct errors.Is
 	// against c.Errors.Last() (no .Err) silently fails.
 	assert.ErrorIs(t, last.Err, fail,
 		"the mid-stream error must reach c.Errors via .Err so logging middleware sees it")

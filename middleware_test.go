@@ -102,7 +102,7 @@ func TestMiddleware_ScopedToRouterGroup(t *testing.T) {
 }
 
 // TestClientFrom_RecoverySurfacesAs500 is the load-bearing check for the
-// "gin.Recovery() must be installed" prerequisite documented in CLAUDE.md §10.1.
+// "gin.Recovery() must be installed" prerequisite documented on Middleware.
 // Removing gin.Recovery() from this test must make it fail loudly.
 func TestClientFrom_RecoverySurfacesAs500(t *testing.T) {
 	r := gin.New()
