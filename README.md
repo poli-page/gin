@@ -21,7 +21,7 @@ This package wires the [Poli Page Go SDK](https://github.com/poli-page/sdk-go) i
 
 - Go `1.25+` (matches `github.com/poli-page/sdk-go`)
 - The Poli Page Go SDK `github.com/poli-page/sdk-go` `v0.11.0` or later (environment API keys, no template versions)
-- Gin `v1.10` (also supports `v1.9`)
+- Gin `v1.10` (the module requires `v1.10.0`)
 - A Poli Page API key from [app.poli.page](https://app.poli.page)
 
 ## Install
@@ -233,7 +233,9 @@ go run .
 
 | Package | Gin | Go |
 |---|---|---|
-| `0.1.x` | `v1.9` / `v1.10` | `1.25+` |
+| `v0.11.x` | `v1.10` | `1.25+` |
+
+`go.mod` requires Gin `v1.10.0`, so Go's minimal version selection never picks an older Gin for your build. CI also runs the suite against `v1.9.1` by downgrading inside this repository.
 
 The supported Go versions follow the upstream policy of "two latest stable releases".
 

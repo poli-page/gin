@@ -94,7 +94,7 @@ Nothing to set up on a registry: no account, token, secret or GitHub environment
    POLI_CONTRACT=<path to contract.json> go test -race -count=1 ./...
    (cd example-app && go vet ./... && golangci-lint run && POLI_CONTRACT=<path to contract.json> go test -race -count=1 ./...)
    ```
-5. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`. A pushed tag is final: the checksum database keeps it, so a fix goes into a new version (`retract` in `go.mod` to warn users off a bad one).
+5. Tag the merge commit and push the tag: `git switch main && git pull --ff-only && git tag vX.Y.Z && git push origin vX.Y.Z`. A pushed tag is final: the checksum database keeps it, so a fix goes into a new version (`retract` in `go.mod` to warn users off a bad one).
 6. Optionally create a GitHub release from the tag with the `CHANGELOG` section: `gh release create vX.Y.Z --notes-file <section>`. There are no binary artifacts; the module is the artifact.
 
 ## Reporting issues
