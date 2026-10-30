@@ -115,3 +115,94 @@ func TestDocumentPreviewDemo_ServesTheStoredHTML(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "<p>welcome</p>", w.Body.String())
 }
+
+// The stream route makes the SDK call (render, then the start of the
+// download) before it writes a status or a header, so an SDK error is
+// answered by the error handler as JSON, never as a committed 200 PDF.
+func TestRenderStreamDemo_SDKErrorsAreAnsweredAsJSON(t *testing.T) {
+	notFound := func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Request-Id", "req_stream_404")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"TEMPLATE_NOT_FOUND","detail":"Template 'welcome' not found in project 'getting-started'.","requestId":"req_stream_404"}`))
+	}
+	drop := func(w http.ResponseWriter, _ *http.Request) {
+		conn, _, err := w.(http.Hijacker).Hijack()
+		if assert.NoError(t, err) {
+			_ = conn.Close()
+		}
+	}
+	cases := []struct {
+		name       string
+		render     http.HandlerFunc
+		storage    http.HandlerFunc
+		wantStatus int
+		wantBody   string
+	}{
+		{
+			name:       "render 404",
+			render:     notFound,
+			wantStatus: http.StatusNotFound,
+			wantBody:   `{"code":"TEMPLATE_NOT_FOUND","message":"Template 'welcome' not found in project 'getting-started'.","status":404,"requestId":"req_stream_404"}`,
+		},
+		{
+			name:       "render network error",
+			render:     drop,
+			wantStatus: http.StatusServiceUnavailable,
+			wantBody:   `{"code":"network_error","message":"Network request failed","status":503,"requestId":null}`,
+		},
+		{
+			name: "download cut before its first byte",
+			storage: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/pdf")
+				w.Header().Set("Content-Length", "1000")
+				w.WriteHeader(http.StatusOK)
+				w.(http.Flusher).Flush()
+				conn, _, err := w.(http.Hijacker).Hijack()
+				if assert.NoError(t, err) {
+					_ = conn.Close()
+				}
+			},
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   `{"code":"DOWNLOAD_FAILED","message":"Failed to download PDF: network error","status":null,"requestId":null}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var origin string
+			api := http.NewServeMux()
+			api.HandleFunc("POST /v1/render", func(w http.ResponseWriter, r *http.Request) {
+				if tc.render != nil {
+					tc.render(w, r)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"documentId":"doc_1","presignedPdfUrl":"` + origin + `/storage/doc_1.pdf"}`))
+			})
+			api.HandleFunc("GET /storage/doc_1.pdf", func(w http.ResponseWriter, r *http.Request) {
+				if tc.storage == nil {
+					t.Errorf("download requested after a failed render")
+					return
+				}
+				tc.storage(w, r)
+			})
+			fake := httptest.NewUnstartedServer(api)
+			fake.Config.SetKeepAlivesEnabled(false)
+			fake.Start()
+			t.Cleanup(fake.Close)
+			origin = fake.URL
+			gin.SetMode(gin.TestMode)
+			r, err := newRouter(polipagegin.Config{APIKey: demoTestKey, BaseURL: fake.URL})
+			require.NoError(t, err)
+
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/render/stream", http.NoBody))
+
+			assert.Equal(t, tc.wantStatus, w.Code)
+			assert.Equal(t, "application/json; charset=utf-8", w.Header().Get("Content-Type"))
+			assert.Empty(t, w.Header().Get("Content-Disposition"))
+			assert.Empty(t, w.Header().Get("X-Accel-Buffering"))
+			assert.JSONEq(t, tc.wantBody, w.Body.String())
+		})
+	}
+}
