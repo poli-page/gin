@@ -278,7 +278,7 @@ func TestPDFStream_EmptyStreamAnswers200WithPDFHeaders(t *testing.T) {
 
 // midStreamServer serves GET / with a PDFStream that sends a first chunk
 // and then fails with an SDK error, behind gin.Recovery and Middleware.
-func midStreamServer(t *testing.T, http2 bool, recovery bool) *httptest.Server {
+func midStreamServer(t *testing.T, http2, recovery bool) *httptest.Server {
 	t.Helper()
 	sdkErr := &polipage.Error{Code: polipage.ErrCodeDownloadFailed, Message: "Failed to download PDF: network error"}
 	r := gin.New()
