@@ -156,12 +156,12 @@ func StubClient(t *testing.T, stub *polipage.Client) gin.HandlerFunc {
 
 But "build a `*polipage.Client` for tests" usually means "make an HTTP call to the real API" — at which point you might as well construct one with a `pp_sandbox_…` key and run it as an integration test gated on `POLI_PAGE_API_KEY`. The narrow-interface pattern above is the better default for unit-level handler tests.
 
-### Integration tests against the develop API
+### Integration tests against the live API
 
 One smoke test per repo. Lives in `tests/integration/` behind a build tag, skips unless the env var holds a sandbox key.
 
 ```go
-// tests/integration/render_against_develop_test.go
+// tests/integration/render_against_live_test.go
 //go:build integration
 
 package integration
@@ -177,7 +177,7 @@ import (
 	"github.com/poli-page/sdk-go/option"
 )
 
-func TestRenderAgainstDevelopAPI(t *testing.T) {
+func TestRenderAgainstLiveAPI(t *testing.T) {
 	key := os.Getenv("POLI_PAGE_API_KEY")
 	if !strings.HasPrefix(key, "pp_sandbox_") {
 		t.Skip("POLI_PAGE_API_KEY is not a pp_sandbox_ key")
