@@ -1,7 +1,7 @@
 // example-app is the runnable demo for the polipagegin integration. It
-// wires the middleware, response helpers, and ErrorMiddleware exactly
-// the way a production Gin service would — copy verbatim and adjust to
-// taste.
+// wires the middleware (with its default error handler) and the response
+// helpers exactly the way a production Gin service would — copy verbatim
+// and adjust to taste.
 //
 // Run:
 //
@@ -11,8 +11,8 @@
 //
 // POLI_PAGE_API_KEY is required; any non-empty key runs the app. Use a
 // pp_sandbox_* key so demo renders are watermarked and not counted. Other
-// POLI_PAGE_* variables are honored per spec §7.2; see the parent docs/
-// for the full list.
+// POLI_PAGE_* variables are honored too; see the parent README for the
+// full list.
 package main
 
 import (
@@ -31,6 +31,29 @@ import (
 	polipage "github.com/poli-page/sdk-go"
 )
 
+// newRouter builds the demo's Gin engine from the integration's
+// configuration: one SDK client, the polipagegin middleware with its
+// default error handler, and the demo routes. main serves it; the tests
+// call it with a Config pointed at a local server.
+func newRouter(cfg polipagegin.Config) (*gin.Engine, error) {
+	client := polipage.NewClient(cfg.Options()...)
+
+	r := gin.New()
+	r.Use(
+		gin.Logger(),
+		gin.Recovery(),
+		polipagegin.Middleware(client),
+	)
+	// Explicit no-trust default: c.ClientIP() returns the direct peer.
+	// Set to your front proxy's CIDR list if running behind one.
+	if err := r.SetTrustedProxies(nil); err != nil {
+		return nil, err
+	}
+
+	registerRoutes(r, assets)
+	return r, nil
+}
+
 // assets bundles the demo dashboard's static files into the binary so a
 // single `go run .` (or built binary) serves the UI without an external
 // asset directory.
@@ -42,15 +65,15 @@ import (
 //go:embed templates static
 var assets embed.FS
 
-// workspaceDotEnv is the dev-time convenience path the example app reads
-// at boot. A missing file is not an error — real shell exports always
-// win, and Docker / k8s / systemd-driven deploys don't go through this
-// loader at all.
-const workspaceDotEnv = "/Users/mickael/Projects/.env"
+// dotEnvFile is the dev-time convenience file the example app reads at
+// boot, relative to the working directory. A missing file is not an
+// error — real shell exports always win, and Docker / k8s / systemd-driven
+// deploys don't go through this loader at all.
+const dotEnvFile = ".env"
 
 func main() {
-	if err := loadDotEnv(workspaceDotEnv); err != nil {
-		log.Printf("warning: could not read %s: %v", workspaceDotEnv, err)
+	if err := loadDotEnv(dotEnvFile); err != nil {
+		log.Printf("warning: could not read %s: %v", dotEnvFile, err)
 	}
 
 	gin.SetMode(gin.ReleaseMode)
@@ -59,22 +82,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("polipagegin.FromEnv: %v", err)
 	}
-	client := polipage.NewClient(cfg.Options()...)
-
-	r := gin.New()
-	r.Use(
-		gin.Logger(),
-		gin.Recovery(),
-		polipagegin.Middleware(client),
-		polipagegin.ErrorMiddleware(),
-	)
-	// Explicit no-trust default: c.ClientIP() returns the direct peer.
-	// Set to your front proxy's CIDR list if running behind one.
-	if err := r.SetTrustedProxies(nil); err != nil {
-		log.Fatalf("SetTrustedProxies: %v", err)
+	r, err := newRouter(cfg)
+	if err != nil {
+		log.Fatalf("newRouter: %v", err)
 	}
-
-	registerRoutes(r, assets)
 
 	srv := &http.Server{
 		Addr:              ":8080",

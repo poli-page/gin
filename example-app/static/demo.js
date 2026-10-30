@@ -100,19 +100,19 @@
   // Routes match the Gin handlers in handlers.go. Keep these in sync.
   const actions = {
     pdf: async target => {
-      const r = await fetch('/api/render/pdf');
+      const r = await fetch('/render/pdf');
       if (!r.ok) return renderError(target, `HTTP ${r.status}`);
       const blob = await r.blob();
       renderBlobIframe(target, blob, 'pdf', `${blob.size.toLocaleString()} bytes`);
     },
     stream: async target => {
-      const r = await fetch('/api/render/stream');
+      const r = await fetch('/render/stream');
       if (!r.ok) return renderError(target, `HTTP ${r.status}`);
       const blob = await r.blob();
       renderBlobIframe(target, blob, 'pdf (stream)', `${blob.size.toLocaleString()} bytes`);
     },
     'doc-create': async target => {
-      const r = await fetch('/api/documents', { method: 'POST' });
+      const r = await fetch('/documents', { method: 'POST' });
       const body = await r.text();
       renderJson(target, r.status, body, 'document descriptor');
       if (r.ok) {
@@ -121,22 +121,22 @@
     },
     'doc-get': async target => {
       if (!state.docId) return;
-      // /api/documents/:id returns a 302 to a presigned S3 URL. Fetching
+      // /documents/:id returns a 302 to a presigned S3 URL. Fetching
       // and following the redirect from JS hits CORS (S3 doesn't expose
       // Access-Control-Allow-Origin). An <iframe> navigation isn't a
       // fetch, so the browser follows the redirect natively.
-      renderIframeUrl(target, `/api/documents/${state.docId}`, 'stored pdf', 'served via 302 → presigned URL');
+      renderIframeUrl(target, `/documents/${state.docId}`, 'stored pdf', 'served via 302 → presigned URL');
     },
     'doc-preview': async target => {
       if (!state.docId) return;
-      const r = await fetch(`/api/documents/${state.docId}/preview`);
+      const r = await fetch(`/documents/${state.docId}/preview`);
       const html = await r.text();
       if (!r.ok) return renderError(target, `HTTP ${r.status}`);
       renderInlineHtml(target, html, 'stored html preview', `${html.length.toLocaleString()} chars`);
     },
     'doc-thumbnails': async target => {
       if (!state.docId) return;
-      const r = await fetch(`/api/documents/${state.docId}/thumbnails`);
+      const r = await fetch(`/documents/${state.docId}/thumbnails`);
       const body = await r.text();
       if (!r.ok) {
         renderJson(target, r.status, body, 'thumbnails');
@@ -151,18 +151,18 @@
     },
     'doc-delete': async target => {
       if (!state.docId) return;
-      const r = await fetch(`/api/documents/${state.docId}`, { method: 'DELETE' });
+      const r = await fetch(`/documents/${state.docId}`, { method: 'DELETE' });
       const body = await r.text();
       renderJson(target, r.status, body || '"(204 No Content)"', 'delete');
       if (r.ok) setDocId(null);
     },
     'render-file': async target => {
-      const r = await fetch('/api/render/file', { method: 'POST' });
+      const r = await fetch('/render/file', { method: 'POST' });
       const body = await r.text();
       renderJson(target, r.status, body, 'wrote to disk');
     },
     'not-found': async target => {
-      const r = await fetch('/api/errors/not-found');
+      const r = await fetch('/errors/not-found');
       const body = await r.text();
       renderJson(target, r.status, body, 'error payload');
     },

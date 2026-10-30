@@ -8,13 +8,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	polipagegin "github.com/poli-page/gin"
-	polipage "github.com/poli-page/sdk-go"
-	"github.com/poli-page/sdk-go/option"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// newDemoServer wires the demo routes the way main does, with the SDK
+// demoTestKey is a well-formed sandbox key for the demo's SDK client.
+const demoTestKey = "pp_sandbox_0123456789abcdef0123456789abcdef"
+
+// newDemoServer builds the demo router the way main does, with the SDK
 // client pointed at a fake Poli Page API.
 func newDemoServer(t *testing.T, api http.Handler) *gin.Engine {
 	t.Helper()
@@ -22,18 +23,12 @@ func newDemoServer(t *testing.T, api http.Handler) *gin.Engine {
 	fake := httptest.NewServer(api)
 	t.Cleanup(fake.Close)
 
-	client := polipage.NewClient(
-		option.WithAPIKey("pp_sandbox_0123456789abcdef0123456789abcdef"),
-		option.WithBaseURL(fake.URL),
-		option.WithMaxRetries(0),
-	)
-	r := gin.New()
-	r.Use(polipagegin.Middleware(client), polipagegin.ErrorMiddleware())
-	registerRoutes(r, assets)
+	r, err := newRouter(polipagegin.Config{APIKey: demoTestKey, BaseURL: fake.URL})
+	require.NoError(t, err)
 	return r
 }
 
-func TestNotFoundDemo_AnswersTemplateNotFoundThroughErrorMiddleware(t *testing.T) {
+func TestNotFoundDemo_AnswersTemplateNotFoundThroughTheErrorHandler(t *testing.T) {
 	var gotBody map[string]any
 	api := http.NewServeMux()
 	api.HandleFunc("POST /v1/render", func(w http.ResponseWriter, r *http.Request) {
@@ -46,7 +41,7 @@ func TestNotFoundDemo_AnswersTemplateNotFoundThroughErrorMiddleware(t *testing.T
 	r := newDemoServer(t, api)
 
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/errors/not-found", http.NoBody))
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/errors/not-found", http.NoBody))
 
 	assert.Equal(t, map[string]any{
 		"project":  "getting-started",
@@ -75,20 +70,20 @@ func TestRenderDemos_SendNoVersion(t *testing.T) {
 	r := newDemoServer(t, api)
 
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/documents", http.NoBody))
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/documents", http.NoBody))
 
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, map[string]any{
 		"project":  "getting-started",
 		"template": "welcome",
-		"data":     map[string]any{"name": "demo"},
+		"data":     map[string]any{"name": "SDK Demo"},
 	}, gotBody)
 }
 
 // The fake API fails the test when called, so only gin's own unmatched-route
-// 404 passes, never an upstream 404 relayed by ErrorMiddleware.
+// 404 passes, never an upstream 404 relayed by the error handler.
 func TestRemovedDemoRoutes_AreGone(t *testing.T) {
-	removed := []string{"/api/render/preview", "/api/render/error"}
+	removed := []string{"/render/preview", "/render/error", "/api/render/preview", "/api/render/error"}
 	r := newDemoServer(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		t.Errorf("fake API called for %s %s", req.Method, req.URL.Path)
 		w.WriteHeader(http.StatusOK)
@@ -115,7 +110,7 @@ func TestDocumentPreviewDemo_ServesTheStoredHTML(t *testing.T) {
 	r := newDemoServer(t, api)
 
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/documents/doc_1/preview", http.NoBody))
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/documents/doc_1/preview", http.NoBody))
 
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "<p>welcome</p>", w.Body.String())
