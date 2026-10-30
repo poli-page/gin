@@ -221,3 +221,120 @@ func TestWriteError_NonPolipageErrorProduces500(t *testing.T) {
 	assert.Empty(t, w.Body.Bytes(),
 		"no JSON body — the caller's logging middleware owns the message")
 }
+
+// runMiddleware drives a fresh router with Middleware(client, opts...)
+// installed and handler on GET /: the error handler under test is the
+// one Middleware ships, not ErrorMiddleware.
+func runMiddleware(t *testing.T, handler gin.HandlerFunc, opts ...polipagegin.MiddlewareOption) *httptest.ResponseRecorder {
+	t.Helper()
+	r := gin.New()
+	r.Use(polipagegin.Middleware(newTestClient(t), opts...))
+	r.GET("/", handler)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/", http.NoBody))
+	return w
+}
+
+func queue(err error) gin.HandlerFunc {
+	return func(c *gin.Context) { _ = c.Error(err) }
+}
+
+func TestMiddleware_ErrorHandlerOnByDefault(t *testing.T) {
+	w := runMiddleware(t, queue(&polipage.Error{
+		Code:       "TEMPLATE_NOT_FOUND",
+		StatusCode: http.StatusNotFound,
+		Message:    "Template 'does-not-exist' not found in project 'getting-started'.",
+		RequestID:  "req_404",
+	}))
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Equal(t, "application/json; charset=utf-8", w.Header().Get("Content-Type"))
+	assert.JSONEq(t, `{
+		"code": "TEMPLATE_NOT_FOUND",
+		"message": "Template 'does-not-exist' not found in project 'getting-started'.",
+		"status": 404,
+		"requestId": "req_404"
+	}`, w.Body.String())
+}
+
+func TestMiddleware_WithoutErrorHandlerLeavesTheErrorAlone(t *testing.T) {
+	w := runMiddleware(t, queue(&polipage.Error{
+		Code:       "TEMPLATE_NOT_FOUND",
+		StatusCode: http.StatusNotFound,
+		Message:    "not found",
+	}), polipagegin.WithoutErrorHandler())
+
+	// gin's default for a handler that wrote nothing.
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Empty(t, w.Body.String())
+}
+
+func TestMiddleware_ErrorHandlerBodyIsThePayload(t *testing.T) {
+	cases := []struct {
+		name       string
+		err        *polipage.Error
+		wantStatus int
+		wantBody   string
+	}{
+		{
+			name: "API error",
+			err: &polipage.Error{
+				Code: "INTERNAL_ERROR", StatusCode: http.StatusInternalServerError,
+				Message: "Unexpected server error.", RequestID: "req_5xx",
+			},
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   `{"code":"INTERNAL_ERROR","message":"Unexpected server error.","status":500,"requestId":"req_5xx"}`,
+		},
+		{
+			name:       "network_error answers 503",
+			err:        &polipage.Error{Code: polipage.ErrCodeNetworkError, Message: "Network request failed"},
+			wantStatus: http.StatusServiceUnavailable,
+			wantBody:   `{"code":"network_error","message":"Network request failed","status":503,"requestId":null}`,
+		},
+		{
+			name:       "timeout answers 504",
+			err:        &polipage.Error{Code: polipage.ErrCodeTimeout, Message: "Request timed out after 60000ms"},
+			wantStatus: http.StatusGatewayTimeout,
+			wantBody:   `{"code":"timeout","message":"Request timed out after 60000ms","status":504,"requestId":null}`,
+		},
+		{
+			name:       "SDK error with no status answers 500 with a null status",
+			err:        &polipage.Error{Code: polipage.ErrCodeAborted, Message: "Request was aborted"},
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   `{"code":"aborted","message":"Request was aborted","status":null,"requestId":null}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := runMiddleware(t, queue(tc.err))
+			assert.Equal(t, tc.wantStatus, w.Code)
+			assert.Equal(t, "application/json; charset=utf-8", w.Header().Get("Content-Type"))
+			assert.JSONEq(t, tc.wantBody, w.Body.String())
+
+			payload, err := json.Marshal(tc.err.ToPayload())
+			require.NoError(t, err)
+			assert.JSONEq(t, string(payload), w.Body.String(), "the body is ToPayload(), unchanged")
+		})
+	}
+}
+
+func TestMiddleware_ErrorHandlerKeepsAWrittenResponse(t *testing.T) {
+	w := runMiddleware(t, func(c *gin.Context) {
+		c.String(http.StatusAccepted, "already answered")
+		_ = c.Error(&polipage.Error{Code: polipage.ErrCodeTimeout, Message: "late"})
+	})
+
+	assert.Equal(t, http.StatusAccepted, w.Code)
+	assert.Equal(t, "already answered", w.Body.String())
+}
+
+func TestMiddleware_WithErrorMiddlewareAnswersOnce(t *testing.T) {
+	r := gin.New()
+	r.Use(polipagegin.Middleware(newTestClient(t)), polipagegin.ErrorMiddleware())
+	r.GET("/", queue(&polipage.Error{Code: polipage.ErrCodeNetworkError, Message: "Network request failed"}))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/", http.NoBody))
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+	assert.JSONEq(t, `{"code":"network_error","message":"Network request failed","status":503,"requestId":null}`, w.Body.String())
+}
