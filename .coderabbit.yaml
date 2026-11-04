@@ -70,7 +70,7 @@ reviews:
         escape/validate user input. Keep it consistent with the README.
     - path: "cmd/**"
       instructions: >-
-        Smoke-test CLI (cobra). Flags must match docs/cli.md and the README; read the API key from the
+        Smoke-test CLI (cobra). Flags must match docs/src/content/docs/concepts/cli.mdx and the README; read the API key from the
         environment, never print it, and return non-zero exit codes on failure.
     - path: "{README.md,docs/**,CHANGELOG.md}"
       instructions: >-
