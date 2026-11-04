@@ -29,11 +29,12 @@ import (
 // values would swallow non-Poli-Page failures and destroy observability.
 //
 // The body is the SDK's (*polipage.Error).ToPayload(), unchanged, with
-// Content-Type: application/json. Its
-// status is the API's HTTP status, 503 for network_error and 504 for
-// timeout; the response uses the same status, or 500 when the payload has
-// none (the body then carries "status": null). Nothing is written when
-// the handler already wrote a response.
+// Content-Type: application/json. Its status is the API's HTTP status,
+// 503 for network_error, 504 for timeout and 502 for invalid_response (a
+// 2xx whose body is not JSON); the response uses the same status, or 500
+// when the payload has none, as for aborted or io_error (the body then
+// carries "status": null). Nothing is written when the handler already
+// wrote a response.
 func ErrorMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Next()

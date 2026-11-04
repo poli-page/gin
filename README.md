@@ -20,14 +20,14 @@ This package wires the [Poli Page Go SDK](https://github.com/poli-page/sdk-go) i
 ## Requirements
 
 - Go `1.25+` (matches `github.com/poli-page/sdk-go`)
-- The Poli Page Go SDK `github.com/poli-page/sdk-go` `v0.11.0` or later (environment API keys, no template versions)
+- The Poli Page Go SDK `github.com/poli-page/sdk-go` `v0.13.x` (the module requires `v0.13.0`). This package shares its major.minor with the Poli Page API and the SDK: `0.13.x` is built and tested against SDK `0.13.x`. Go modules cannot cap a version, so keep the SDK on `0.13.x` while you use `0.13.x` of this package.
 - Gin `v1.10` (the module requires `v1.10.0`)
 - A Poli Page API key from [app.poli.page](https://app.poli.page)
 
 ## Install
 
 ```bash
-go get github.com/poli-page/gin github.com/poli-page/sdk-go@v0.11.0
+go get github.com/poli-page/gin@v0.13.0 github.com/poli-page/sdk-go@v0.13.0
 ```
 
 Set your key in the environment:
@@ -197,8 +197,8 @@ Or queue the error with `c.Error(err)` and let the error handler answer.
 { "code": "TEMPLATE_NOT_FOUND", "message": "Template 'does-not-exist' not found in project 'getting-started'.", "status": 404, "requestId": "req_…" }
 ```
 
-- The HTTP status is the payload's `status`: the API's status for an API error, `503` for `network_error` and `504` for `timeout`.
-- An SDK error with no status (for example `aborted`) answers `500`, and the body keeps `"status": null`. `requestId` is `null` when the API sent none.
+- The HTTP status is the payload's `status`: the API's status for an API error, `503` for `network_error`, `504` for `timeout`, and `502` for `invalid_response` (a `2xx` from the API whose body is not JSON, usually from a proxy).
+- An SDK error with no status (for example `aborted`, or `io_error` from `polipage.RenderToFile`) answers `500`, and the body keeps `"status": null`. `requestId` is `null` when the API sent none.
 - `code` and `message` are the SDK's, verbatim.
 - Only `*polipage.Error` is handled (the last error on `c.Errors`); any other error is left for your own error handling, and a response the handler already wrote is never overwritten. Headers set for another answer (`Content-Disposition`, `X-Accel-Buffering`, `Content-Length`, a PDF `Content-Type`) are dropped from the JSON answer.
 

@@ -298,10 +298,26 @@ func TestMiddleware_ErrorHandlerBodyIsThePayload(t *testing.T) {
 			wantBody:   `{"code":"timeout","message":"Request timed out after 60000ms","status":504,"requestId":null}`,
 		},
 		{
+			// The SDK keeps the real 2xx in StatusCode; only the payload says 502.
+			name: "invalid_response answers 502",
+			err: &polipage.Error{
+				Code: polipage.ErrCodeInvalidResponse, StatusCode: http.StatusOK,
+				Message: "Invalid response: HTTP 200 body is not JSON", RequestID: "req_proxy",
+			},
+			wantStatus: http.StatusBadGateway,
+			wantBody:   `{"code":"invalid_response","message":"Invalid response: HTTP 200 body is not JSON","status":502,"requestId":"req_proxy"}`,
+		},
+		{
 			name:       "SDK error with no status answers 500 with a null status",
 			err:        &polipage.Error{Code: polipage.ErrCodeAborted, Message: "Request was aborted"},
 			wantStatus: http.StatusInternalServerError,
 			wantBody:   `{"code":"aborted","message":"Request was aborted","status":null,"requestId":null}`,
+		},
+		{
+			name:       "io_error answers 500 with a null status",
+			err:        &polipage.Error{Code: polipage.ErrCodeIOError, Message: "Failed to write PDF: /out/invoice.pdf: permission denied"},
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   `{"code":"io_error","message":"Failed to write PDF: /out/invoice.pdf: permission denied","status":null,"requestId":null}`,
 		},
 	}
 	for _, tc := range cases {
