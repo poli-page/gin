@@ -85,10 +85,11 @@ What the module ships: the tracked files of the repository root and its packages
 1. Move `[Unreleased]` to `[X.Y.Z] - YYYY-MM-DD` in `CHANGELOG.md` and update the compare links at the bottom.
 2. For a new minor, require `github.com/poli-page/sdk-go` of that minor in both `go.mod` files (`go get github.com/poli-page/sdk-go@vX.Y.Z && go mod tidy`, then the same in `example-app/`), pin the API contract of that minor in `.github/workflows/ci.yml` and `.github/workflows/ci-tip.yml`, and update the README requirements and install line.
 3. Commit `chore: release X.Y.Z` through a PR on `main` and wait for CI to be green.
-4. Update `main`, then run the pre-flight checks on it, with the contract version CI pins in `.github/workflows/ci.yml`. They are the gate: a pushed tag cannot be taken back, so **if any command fails, stop: do not tag.** The subshell stops at the first failure, and its last line prints only when every check passed. Run it as is: `set -e` has no effect in a subshell followed by `&&` or `||`.
+4. Update `main`, then run the pre-flight checks on it, with the contract version CI pins in `.github/workflows/ci.yml`. They are the gate: a pushed tag cannot be taken back, so **if any command fails, stop: do not tag.** The subshell stops at the first failure, and its last line prints only when every check passed; only then is `checked` set to the commit, and step 5 refuses to tag while it is empty. Run it as is: `set -e` has no effect in a subshell followed by `&&` or `||`, so the status is tested on its own line.
    ```bash
    git switch main && git pull --ff-only
-   checked="$(git rev-parse HEAD)"
+   checked=
+   sha="$(git rev-parse HEAD)"
    (
      set -euo pipefail
      ./scripts/check-release-versions.sh vX.Y.Z
@@ -100,13 +101,14 @@ What the module ships: the tracked files of the repository root and its packages
      go vet ./...
      golangci-lint run
      CI=true POLI_CONTRACT=<path to contract.json> go test -race -count=1 ./...
-     echo "pre-flight passed on $checked"
+     echo "pre-flight passed on $sha"
    )
+   [ $? -eq 0 ] && checked="$sha"
    ```
-5. Tag exactly the commit you checked, and only while it is still the tip of `origin/main`; do not pull again. If `origin/main` moved, go back to step 4 on the new `main`.
+5. Tag exactly the commit you checked, and only while it is still the tip of `origin/main`; do not pull again. If the pre-flight failed (`checked` is empty) or `origin/main` moved, nothing is tagged: fix the failure, or go back to step 4 on the new `main`.
    ```bash
-   git fetch origin
-   test "$(git rev-parse HEAD)" = "$checked" && test "$(git rev-parse origin/main)" = "$checked" \
+   test -n "$checked" && git fetch origin \
+     && test "$(git rev-parse HEAD)" = "$checked" && test "$(git rev-parse origin/main)" = "$checked" \
      && git tag vX.Y.Z "$checked" && git push origin vX.Y.Z
    ```
    A pushed tag is final: the checksum database keeps it, so a fix goes into a new version (`retract` in `go.mod` to warn users off a bad one).
