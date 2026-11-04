@@ -19,7 +19,8 @@ Requires `github.com/poli-page/sdk-go` 0.13 and passes the Poli Page API contrac
   - the PDF download of `Render.PDF` and `Render.PDFStream` is bounded by the client's timeout (`POLI_PAGE_TIMEOUT`, `Config.Timeout`): the whole download for `Render.PDF`, each read for `Render.PDFStream`.
 - CI pins the API contract v0.13.0 (was the commit tagged v0.12.0, once named v1.3.0) and runs its integration cases, including `impl.invalid-response`, against the example app; all six pass and none is skipped.
 - The live API CI job passes the optional `POLI_PAGE_BASE_URL` secret to the integration test and the CLI smoke test (unset: the SDK default), next to the `pp_sandbox_` key in `POLI_PAGE_API_KEY`. The integration test passes `POLI_PAGE_BASE_URL` to the client when it is set.
-- Example app: `github.com/stretchr/testify` `v1.12.1`, the version the root module already required.
+- Dependency floors of the module: `golang.org/x/net` `v0.58.0` (was `v0.25.0`), `golang.org/x/text` `v0.41.0` (was `v0.15.0`), `golang.org/x/crypto` `v0.55.0` and `golang.org/x/sys` `v0.47.0`, which fix the known vulnerabilities of the versions Gin `v1.10.0` pulls in, except four HTTP/2 server ones fixed only in `x/net` `v0.60.0`, which needs Go 1.26. `github.com/stretchr/testify` `v1.12.1` (was `v1.10.0`). The minimum Go stays 1.25 (`go 1.25.0`), and so does the Gin floor (`v1.10.0`).
+- Example app: Gin `v1.12.0` and `github.com/stretchr/testify` `v1.12.1`.
 
 ## [0.11.0] - 2026-10-30
 

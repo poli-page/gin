@@ -78,23 +78,38 @@ What the module ships: the tracked files of the repository root and its packages
 
 `github.com/poli-page/gin` shares its major.minor with the Poli Page API: module `0.13.x` talks to API `0.13`, passes the [API contract](https://github.com/poli-page/api-contract) `v0.13.0`, and requires `github.com/poli-page/sdk-go` of the same minor (`v0.13.0` in both `go.mod` files). A `go.mod` requirement is a minimum and cannot cap the version, so the README asks users to keep the SDK on `0.13.x`. Patch numbers are free: a fix to the module alone is a patch, whatever the API's or the SDK's patch. A change of the API contract, a new feature, and a raise of the minimum Go or Gin version are each a minor. The module may skip minors when it has nothing to ship for one; there was no `0.12`.
 
-`scripts/check-release-versions.sh vX.Y.Z` refuses a version whose major.minor differs from the contract version pinned in `.github/workflows/ci.yml` (a stable contract tag on the pinned commit, never the comment next to it) or from the `github.com/poli-page/sdk-go` requirement in `go.mod` and `example-app/go.mod`, and names both versions. A pushed tag is the release, so run it before tagging; the Release workflow (`.github/workflows/release.yml`) re-runs it, with a check of the `CHANGELOG` section, on the pushed tag, so a mismatch shows up red at once.
+`scripts/check-release-versions.sh vX.Y.Z` refuses a version whose major.minor differs from the contract version pinned in `.github/workflows/ci.yml` (a stable contract tag on the pinned commit, never the comment next to it or a commented-out line; every workflow that pins the contract must pin the same commit) or from the `github.com/poli-page/sdk-go` requirement in `go.mod` and `example-app/go.mod`, and names both versions. It also refuses a version with no `## [X.Y.Z] - ` section in `CHANGELOG.md`. A pushed tag is the release, so run it before tagging (step 4 below); the Release workflow (`.github/workflows/release.yml`) re-runs it on the pushed tag, so a mismatch shows up red at once.
 
 ### Each release
 
 1. Move `[Unreleased]` to `[X.Y.Z] - YYYY-MM-DD` in `CHANGELOG.md` and update the compare links at the bottom.
 2. For a new minor, require `github.com/poli-page/sdk-go` of that minor in both `go.mod` files (`go get github.com/poli-page/sdk-go@vX.Y.Z && go mod tidy`, then the same in `example-app/`), pin the API contract of that minor in `.github/workflows/ci.yml` and `.github/workflows/ci-tip.yml`, and update the README requirements and install line.
 3. Commit `chore: release X.Y.Z` through a PR on `main` and wait for CI to be green.
-4. On the merged `main`, run the pre-flight checks, with the contract version CI pins in `.github/workflows/ci.yml`:
+4. Update `main`, then run the pre-flight checks on it, with the contract version CI pins in `.github/workflows/ci.yml`. They are the gate: a pushed tag cannot be taken back, so **if any command fails, stop: do not tag.** The subshell stops at the first failure, and its last line prints only when every check passed. Run it as is: `set -e` has no effect in a subshell followed by `&&` or `||`.
    ```bash
-   ./scripts/check-release-versions.sh vX.Y.Z
-   gofmt -l .
-   go vet ./...
-   golangci-lint run
-   POLI_CONTRACT=<path to contract.json> go test -race -count=1 ./...
-   (cd example-app && go vet ./... && golangci-lint run && POLI_CONTRACT=<path to contract.json> go test -race -count=1 ./...)
+   git switch main && git pull --ff-only
+   checked="$(git rev-parse HEAD)"
+   (
+     set -euo pipefail
+     ./scripts/check-release-versions.sh vX.Y.Z
+     test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+     go vet ./...
+     golangci-lint run
+     CI=true POLI_CONTRACT=<path to contract.json> go test -race -count=1 ./...
+     cd example-app
+     go vet ./...
+     golangci-lint run
+     CI=true POLI_CONTRACT=<path to contract.json> go test -race -count=1 ./...
+     echo "pre-flight passed on $checked"
+   )
    ```
-5. Tag the merge commit and push the tag: `git switch main && git pull --ff-only && git tag vX.Y.Z && git push origin vX.Y.Z`. A pushed tag is final: the checksum database keeps it, so a fix goes into a new version (`retract` in `go.mod` to warn users off a bad one).
+5. Tag exactly the commit you checked, and only while it is still the tip of `origin/main`; do not pull again. If `origin/main` moved, go back to step 4 on the new `main`.
+   ```bash
+   git fetch origin
+   test "$(git rev-parse HEAD)" = "$checked" && test "$(git rev-parse origin/main)" = "$checked" \
+     && git tag vX.Y.Z "$checked" && git push origin vX.Y.Z
+   ```
+   A pushed tag is final: the checksum database keeps it, so a fix goes into a new version (`retract` in `go.mod` to warn users off a bad one).
 6. Check that the Release workflow is green on the tag.
 7. Request the version once so the proxy fetches it: `GOPROXY=https://proxy.golang.org GO111MODULE=on go list -m github.com/poli-page/gin@vX.Y.Z`. Then open `https://pkg.go.dev/github.com/poli-page/gin@vX.Y.Z` and, if it is not listed yet, click "Request" on that page.
 8. Optionally create a GitHub release from the tag with the `CHANGELOG` section: `gh release create vX.Y.Z --notes-file <section>`. There are no binary artifacts; the module is the artifact.
