@@ -39,15 +39,17 @@ This is tested on Gin v1.9 and v1.10, the versions CI runs. Later Gin versions r
 
 ## Example
 
+The sample uses the `billing` / `invoice` pair. Picture a very large invoice, such as a quarterly statement with thousands of lines, which is where streaming pays off.
+
 ```go
-// big_book_handler.go
-func bigBookHandler(c *gin.Context) {
+// big_invoice_handler.go
+func bigInvoiceHandler(c *gin.Context) {
 	client := polipagegin.ClientFrom(c)
 
 	body, err := client.Render.PDFStream(c.Request.Context(), polipage.RenderInput{
-		Project:  "books",
-		Template: "manuscript",
-		Data:     map[string]any{"slug": c.Param("slug")},
+		Project:  "billing",
+		Template: "invoice",
+		Data:     map[string]any{"invoiceNumber": c.Param("number")},
 	})
 	if err != nil {
 		polipagegin.WriteError(c, err)
@@ -56,7 +58,7 @@ func bigBookHandler(c *gin.Context) {
 	defer body.Close()
 
 	polipagegin.PDFStream(c, body, polipagegin.PDFOptions{
-		Filename: c.Param("slug") + ".pdf",
+		Filename: c.Param("number") + ".pdf",
 		Inline:   true,
 	})
 }

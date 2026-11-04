@@ -144,9 +144,9 @@ func TestRenderAgainstLiveAPI(t *testing.T) {
 	defer cancel()
 
 	pdf, err := client.Render.PDF(ctx, polipage.RenderInput{
-		Project:  "getting-started",
-		Template: "welcome",
-		Data:     map[string]any{"name": "ci"},
+		Project:  "billing",
+		Template: "invoice",
+		Data:     map[string]any{"invoiceNumber": "ci"},
 	})
 	if err != nil {
 		t.Fatalf("render failed: %v", err)
