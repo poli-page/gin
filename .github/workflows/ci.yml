@@ -8,6 +8,11 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # id-token is needed by codecov/codecov-action so it can mint a short-lived
+    # OIDC token instead of requiring a CODECOV_TOKEN secret on this public repo.
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -50,7 +55,17 @@ jobs:
         env:
           CI: 'true'
           POLI_CONTRACT: ${{ steps.contract.outputs.path }}
-        run: go test -race -count=1 ./...
+        run: go test -race -count=1 -coverprofile=coverage.out -covermode=atomic ./...
+      - name: Upload coverage to Codecov
+        # Upload only from one matrix entry to avoid noisy duplicate reports.
+        # `use_oidc: true` makes this tokenless on public repos — see the
+        # job-level `id-token: write` permission above.
+        if: ${{ matrix.gin == 'v1.10.0' && hashFiles('coverage.out') != '' }}
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          use_oidc: true
+          files: coverage.out
+          fail_ci_if_error: false
       # example-app/contract_test.go runs the contract's impl cases against
       # the example app. With CI set it fails, never skips, when
       # POLI_CONTRACT is missing.
