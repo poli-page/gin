@@ -1,0 +1,99 @@
+---
+title: The polipage-render CLI
+description: Render a template from the shell with the polipage-render binary, with its flags, exit codes and a CI smoke-test recipe.
+---
+
+The `cmd/polipage-render` binary renders a template end to end from the shell. Use it as a smoke test in CI and as a one-shot render tool in scripts. It renders through `Render.PDFStream` and copies the stream to the output, with no buffering.
+
+## Install
+
+```bash
+go install github.com/poli-page/gin/cmd/polipage-render@latest
+```
+
+Or run it without installing:
+
+```bash
+go run github.com/poli-page/gin/cmd/polipage-render --help
+```
+
+## Render to a file or to stdout
+
+With `-o`, the PDF goes to that file. Without it, the bytes go to stdout and diagnostics stay on stderr:
+
+```bash
+polipage-render --project=getting-started --template=welcome \
+    --data='{"name":"World"}' > welcome.pdf
+```
+
+There is no version flag: the API key selects the environment, and the project's copy published in that environment is rendered. A `pp_sandbox_…` key renders a watermarked PDF that does not count toward the monthly quota.
+
+## Flags
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `--project` | yes | Project slug. |
+| `--template` | yes | Template slug. |
+| `--data` | yes | JSON object passed to the template. |
+| `--format` | no | Page format: `A4`, `Letter`, `Legal`, and so on. The SDK default applies otherwise. |
+| `--orientation` | no | `portrait` or `landscape`. |
+| `--locale` | no | BCP 47 locale string. |
+| `-o`, `--out` | no | Output file path. Stdout when omitted. |
+| `--timeout` | no | Per-request timeout in `time.ParseDuration` syntax (`30s`, `2m`). Overrides `POLI_PAGE_TIMEOUT`. |
+
+The binary reads the same variables as [`FromEnv`](../configuration/#environment-variables), and `--timeout` overrides `POLI_PAGE_TIMEOUT` when both are set. It does not load `.env` files, so it can be embedded in any orchestration (`docker run -e`, `kubectl exec`, `cron`).
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Success. The PDF was written to `-o` or stdout. |
+| `1` | Authentication or authorization failure (`IsAuthError()`). |
+| `2` | Validation rejected the render (`IsValidationError()`). |
+| `3` | Network or timeout failure (`IsNetworkError()`). |
+| `4` | Anything else: rate limit, 5xx, an SDK-internal error, or a failure to create or write the output. The stderr message names the code. |
+| `64` | Misuse: a bad or missing flag, invalid JSON in `--data`, or an invalid environment variable. |
+
+## Gotchas
+
+- **`--data` is one JSON string**, not several `key=value` flags. Quote it carefully, or build it with a heredoc for complex payloads.
+- **Stdout carries only PDF bytes.** Do not redirect both streams to a file (`> out.pdf 2>&1`): the diagnostics would corrupt the PDF.
+
+## Example
+
+A GitHub Actions step that smoke-tests every push. The guard in the script skips it for forks that open pull requests without secrets, so they get no red build:
+
+```yaml
+# .github/workflows/ci.yml
+- name: Render smoke test
+  env:
+    POLI_PAGE_API_KEY: ${{ secrets.POLI_PAGE_API_KEY }}
+  run: |
+    if [ -z "$POLI_PAGE_API_KEY" ]; then
+      echo "::notice::POLI_PAGE_API_KEY is not set: skipping the smoke test."
+      exit 0
+    fi
+    go run ./cmd/polipage-render \
+        --project=getting-started \
+        --template=welcome \
+        --data='{"name":"ci"}' \
+        -o /tmp/welcome.pdf
+    test -s /tmp/welcome.pdf
+```
+
+A shell check on the exit code:
+
+```bash
+polipage-render --project=billing --template=invoice --data='{"invoiceNumber":"INV-001"}' -o out.pdf
+case $? in
+    0) ;;
+    1) echo "API key issue" >&2 ;;
+    2) echo "Template or data rejected" >&2 ;;
+    3) echo "Network down" >&2 ;;
+    *) echo "Render failed" >&2 ;;
+esac
+```
+
+## See also
+- [Install](../../getting-started/install/)
+- [Configuration](../configuration/)

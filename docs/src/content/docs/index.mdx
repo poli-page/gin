@@ -1,0 +1,18 @@
+---
+title: Poli Page Gin integration
+description: Render Poli Page documents from Gin handlers with github.com/poli-page/gin.
+template: splash
+hero:
+  tagline: Render Poli Page documents as Gin HTTP responses.
+  actions:
+    - { text: Quick start, link: /gin/getting-started/quick-start/, icon: rocket }
+    - { text: API reference, link: /gin/reference/api/, icon: open-book }
+---
+
+import { CardGrid, Card } from '@astrojs/starlight/components';
+
+<CardGrid>
+  <Card title="Quick start" icon="rocket">Install the middleware and return a PDF from a handler.</Card>
+  <Card title="Concepts" icon="puzzle">Environment configuration, the per-request client, the middleware, response helpers and streaming.</Card>
+  <Card title="API reference" icon="open-book">Every exported symbol of `github.com/poli-page/gin`, on one page.</Card>
+</CardGrid>

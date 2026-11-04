@@ -1,0 +1,68 @@
+---
+title: Streaming
+description: Stream large PDFs with Render.PDFStream and polipagegin.PDFStream so the document never sits whole in process memory.
+---
+
+`Render.PDF` returns a `[]byte`: fine for a 200 KB invoice, wasteful for a 20 MB book, because each goroutine holds the full payload until the response finishes flushing. `client.Render.PDFStream` returns an `io.ReadCloser` that yields chunks as the SDK receives them, and `polipagegin.PDFStream` writes them to the response as they arrive.
+
+## How it works
+
+`polipagegin.PDFStream(c, reader, opts)` reads the reader 32 KB at a time, writes each chunk to `c.Writer` and calls `Flush()` after it, so bytes leave the process as they arrive. It sends status `200` with the same headers as `polipagegin.PDF` (`Content-Type`, `Cache-Control: no-store, private`, `X-Content-Type-Options: nosniff` and the RFC 5987 `Content-Disposition`; see [Responses](../responses/#filename-encoding)), plus `X-Accel-Buffering: no`, which nginx honors per response. The body is chunked, with no `Content-Length`.
+
+The helper takes an `io.Reader`, not an `io.ReadCloser`: the handler owns the stream, so `defer body.Close()` goes right after the SDK call. A nil reader panics.
+
+`PDFStream` reads the first chunk before it sets any header. If that read fails, for example with `DOWNLOAD_FAILED`, nothing is written: the error is queued on `c.Errors` and the middleware's error handler answers it as JSON, with no PDF headers.
+
+## Render and store, then redirect
+
+When the document also goes to storage or an audit trail, `Render.Document` returns a `*DocumentDescriptor` with a presigned URL. Save its `DocumentID`, redirect the client with `polipagegin.DocumentRedirect`, and skip the stream. This is cheaper than streaming, since the browser fetches the bytes from object storage.
+
+## Gotchas
+
+- **The stream is consumed once.** You cannot retry the response after partial bytes were written. The SDK returns an error before it hands you the reader when the API rejects the request, so a successful `Render.PDFStream` call already means the API said yes.
+- **No `Content-Length`.** Clients that need the size up front should use buffered `Render.PDF` and `polipagegin.PDF`.
+- **Buffering proxies cancel the benefit.** `X-Accel-Buffering: no` works for nginx. Cloudflare's auto-buffering on Pro+ plans ignores it, so disable that for the route. Behind any other proxy, set its per-route equivalent, such as `proxy_buffering off` on the location block. If buffering cannot be turned off anywhere in the chain, buffered `PDF` is the saner default.
+- **Pass `c.Request.Context()`.** When the browser closes the connection, Gin cancels the request context, the SDK aborts the upstream request, and the next read fails with `aborted`. With `context.Background()` the goroutine reads on until the SDK timeout.
+- **Writer wrappers can hide the flusher.** `gin.ResponseWriter` embeds `http.Flusher`, but a custom writer-wrapping middleware may not flush. If streaming feels laggy, look there first.
+
+## A failure mid-stream
+
+Once the helper has written status `200` and the first chunk, it cannot upgrade to a `500`. It queues the error with `c.Error(err)` and cuts the response so the client sees a truncated transfer (`unexpected EOF`) instead of a complete-looking PDF:
+
+- It hijacks and closes the HTTP/1.x connection. It looks through gin's writer and any wrapper that implements `Unwrap`. A wrapper without `Unwrap`, such as `gin-contrib/gzip`, is hijacked through its own `Hijack`.
+- When the connection cannot be hijacked (HTTP/2, a `httptest.ResponseRecorder`, or a wrapper whose `Hijack` fails or panics with gin's type assertion error), it panics with `http.ErrAbortHandler`, which makes `net/http` reset the stream. Any other panic from a wrapper's `Hijack` is passed on unchanged.
+- `gin.Recovery()` catches that panic and finishes the response normally. Behind Recovery, an HTTP/2 stream cut midway therefore ends as a short `200`, and Gin v1.9 and v1.10 Recovery log a stack trace for it. If that matters, compare the downloaded size with the document's `sizeBytes`.
+- On the panic path, middleware code after `c.Next()` (such as `gin.Logger` or your own logging of `c.Errors`) runs only if a recovery middleware sits inside it.
+- In your tests, a mid-stream failure through `httptest.NewRecorder` or `gin.CreateTestContext` panics with `http.ErrAbortHandler` unless a recovery middleware catches it. Recover it, or assert the panic.
+
+This is tested on Gin v1.9 and v1.10, the versions CI runs. Later Gin versions refuse to hijack once body bytes are written, so behind a wrapper without `Unwrap` such a stream may end as a short `200` there. Plan alerts accordingly.
+
+## Example
+
+```go
+// big_book_handler.go
+func bigBookHandler(c *gin.Context) {
+	client := polipagegin.ClientFrom(c)
+
+	body, err := client.Render.PDFStream(c.Request.Context(), polipage.RenderInput{
+		Project:  "books",
+		Template: "manuscript",
+		Data:     map[string]any{"slug": c.Param("slug")},
+	})
+	if err != nil {
+		polipagegin.WriteError(c, err)
+		return
+	}
+	defer body.Close()
+
+	polipagegin.PDFStream(c, body, polipagegin.PDFOptions{
+		Filename: c.Param("slug") + ".pdf",
+		Inline:   true,
+	})
+}
+```
+
+## See also
+- [Responses](../responses/)
+- [Middleware](../middleware/)
+- [Errors](../../production/errors/)

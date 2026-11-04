@@ -1,0 +1,70 @@
+---
+title: Quick start
+description: Install the Poli Page middleware on a Gin router and return a rendered PDF from a handler.
+---
+
+Install the middleware, pull the client out of the request in a handler, render, and answer the PDF with a response helper.
+
+## Install the middleware
+
+Build one `*polipage.Client` at startup and pass it to `polipagegin.Middleware`. [Install](../install/) shows the packages and the API key.
+
+## Render from a handler
+
+Inside a handler, `polipagegin.ClientFrom(c)` returns the client. Pass `c.Request.Context()` to the SDK call, so a disconnected browser cancels the render. `polipagegin.PDF` writes the response with the right headers. To try it without a template of your own, render the `welcome` template of the `getting-started` project, which every organization has in `sandbox`.
+
+When you queue an SDK error with `c.Error(err)` and return, the middleware answers it as JSON. See [Errors](../../production/errors/).
+
+## Example
+
+```go
+// main.go
+package main
+
+import (
+	"log"
+	"os"
+
+	"github.com/gin-gonic/gin"
+	polipagegin "github.com/poli-page/gin"
+	polipage "github.com/poli-page/sdk-go"
+	"github.com/poli-page/sdk-go/option"
+)
+
+func main() {
+	client := polipage.NewClient(
+		option.WithAPIKey(os.Getenv("POLI_PAGE_API_KEY")),
+	)
+
+	r := gin.Default()
+	r.Use(polipagegin.Middleware(client))
+	r.GET("/invoices/:number", invoiceHandler)
+
+	log.Fatal(r.Run(":8080"))
+}
+
+func invoiceHandler(c *gin.Context) {
+	number := c.Param("number")
+	client := polipagegin.ClientFrom(c)
+
+	pdf, err := client.Render.PDF(c.Request.Context(), polipage.RenderInput{
+		Project:  "billing",
+		Template: "invoice",
+		Data:     map[string]any{"invoiceNumber": number},
+	})
+	if err != nil {
+		_ = c.Error(err) // answered by the middleware's error handler
+		return
+	}
+
+	polipagegin.PDF(c, pdf, polipagegin.PDFOptions{
+		Filename: "invoice-" + number + ".pdf",
+	})
+	// 200 application/pdf, Content-Disposition: attachment; filename="invoice-INV-001.pdf"
+}
+```
+
+## See also
+- [Client access](../../concepts/client-access/)
+- [Responses](../../concepts/responses/)
+- [Errors](../../production/errors/)

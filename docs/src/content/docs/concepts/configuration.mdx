@@ -1,0 +1,85 @@
+---
+title: Configuration
+description: Build the SDK client from POLI_PAGE_* environment variables with polipagegin.FromEnv, or pass option.With* values yourself.
+---
+
+You either construct the SDK client yourself with `option.With*` and pass it to `polipagegin.Middleware`, or call `polipagegin.FromEnv()` to load and validate the `POLI_PAGE_*` environment variables.
+
+## Environment variables
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `POLI_PAGE_API_KEY` | required | Your API key, `pp_{environment}_…`. A missing or empty value is an error. |
+| `POLI_PAGE_BASE_URL` | SDK default | Override the API origin. Must be an `http://` or `https://` URL. |
+| `POLI_PAGE_TIMEOUT` | SDK default | Per-request timeout, parsed by `time.ParseDuration` (`30s`, `2m`). Must be above 0 and at most `10m`. |
+| `POLI_PAGE_MAX_RETRIES` | SDK default | Integer in `[0, 10]`. An explicit `0` means no retries. |
+| `POLI_PAGE_RETRY_DELAY` | SDK default | Base retry delay, parsed by `time.ParseDuration`. In `[0, 30s]`. An explicit `0` means no backoff. |
+
+A variable that is unset or empty falls back to the SDK default, except `POLI_PAGE_API_KEY`.
+
+## The API key check
+
+`FromEnv` accepts any non-empty `POLI_PAGE_API_KEY`: the API is the only authority on keys. A value that does not match `pp_{environment}_{32 lowercase hex}` logs one `log/slog` warning. The warning names the expected format and shows no part of the key, not even its `pp_{environment}_` part. The API then decides whether the key is valid (`401 INVALID_API_KEY`).
+
+## FromEnv
+
+`polipagegin.FromEnv()` returns a `polipagegin.Config`. When a variable is invalid, the error wraps `polipagegin.ErrInvalidConfig` and names the variable, so `errors.Is(err, polipagegin.ErrInvalidConfig)` is the one check when the cause does not matter.
+
+`cfg.Options()` returns the `[]option.RequestOption` to pass to `polipage.NewClient`. Only the variables you set contribute an option, so the SDK keeps its own defaults for the rest. Combine them with programmatic options such as `option.WithLogger`:
+
+```go
+// main.go
+cfg, err := polipagegin.FromEnv()
+if err != nil {
+	log.Fatal(err)
+}
+opts := append(cfg.Options(), option.WithLogger(slog.Default()))
+client := polipage.NewClient(opts...)
+```
+
+## Build the client yourself
+
+`polipagegin.Middleware` takes any `*polipage.Client`. Skip `FromEnv` when you configure the client in code:
+
+```go
+// main.go
+client := polipage.NewClient(
+	option.WithAPIKey(os.Getenv("POLI_PAGE_API_KEY")),
+	option.WithTimeout(30*time.Second),
+	option.WithMaxRetries(2),
+)
+```
+
+The SDK's options are listed in the [SDK documentation](../../reference/sdk/).
+
+## Example
+
+```go
+// main.go
+package main
+
+import (
+	"log"
+
+	"github.com/gin-gonic/gin"
+	polipagegin "github.com/poli-page/gin"
+	polipage "github.com/poli-page/sdk-go"
+)
+
+func main() {
+	cfg, err := polipagegin.FromEnv()
+	if err != nil {
+		log.Fatal(err) // names the offending variable
+	}
+	client := polipage.NewClient(cfg.Options()...)
+
+	r := gin.Default()
+	r.Use(polipagegin.Middleware(client))
+
+	log.Fatal(r.Run(":8080"))
+}
+```
+
+## See also
+- [Client access](../client-access/)
+- [API reference](../../reference/api/)

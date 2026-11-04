@@ -1,0 +1,102 @@
+---
+title: Errors
+description: How *polipage.Error surfaces in Gin, what the error handler answers, and how to handle SDK errors yourself.
+---
+
+The SDK returns one error type, `*polipage.Error`, with predicate methods instead of a type per category. The middleware turns a queued `*polipage.Error` into a JSON answer, or you handle errors inline.
+
+## The error
+
+Discriminate on these predicates, or on the sentinels with `errors.Is`:
+
+- **Auth**: `err.IsAuthError()` (HTTP 401 or 403, sentinels `polipage.ErrUnauthorized` and `polipage.ErrForbidden`).
+- **Rate limit**: `err.IsRateLimitError()` (HTTP 429, sentinel `polipage.ErrRateLimit`).
+- **Validation**: `err.IsValidationError()` (HTTP 400, sentinel `polipage.ErrValidation`). The template or data was rejected.
+- **Network**: `err.IsNetworkError()` (connection, DNS, TLS or timeout).
+
+Every error carries `Code`, `Message`, `StatusCode` (zero for SDK-internal errors) and `RequestID`. Use `errors.As` to reach them.
+
+## What the error handler answers
+
+`polipagegin.Middleware(client)` installs the error handler by default. When a handler queues a `*polipage.Error` with `c.Error(err)` and writes no response, the middleware answers with `Content-Type: application/json` and the SDK's `err.ToPayload()` as the body, unchanged:
+
+```json
+{ "code": "TEMPLATE_NOT_FOUND", "message": "Template 'does-not-exist' not found in project 'getting-started'.", "status": 404, "requestId": "req_…" }
+```
+
+| Case | HTTP status | Body `status` |
+| --- | --- | --- |
+| An API error | the API's status | the API's status |
+| `network_error` | `503` | `503` |
+| `timeout` | `504` | `504` |
+| `invalid_response` (a `2xx` whose body is not JSON, usually from a proxy) | `502` | `502` |
+| An SDK error with no status, such as `aborted` or `io_error` | `500` | `null` |
+
+`requestId` is `null` when the API sent none. `code` and `message` are the SDK's, verbatim.
+
+The handler is narrow on purpose:
+
+- Only `*polipage.Error` is handled, and only the last error on `c.Errors`. Any other error is left for your own error handling.
+- A response the handler already wrote is never overwritten.
+- Headers set for another answer (`Content-Disposition`, `X-Accel-Buffering`, `Content-Length`, a PDF `Content-Type`) are dropped from the JSON answer.
+
+`polipagegin.WriteError(c, err)` writes the same answer from inside a handler, for code paths that prefer explicit error rendering. A non-`*polipage.Error` argument gets a `500` with no body.
+
+## Handle errors yourself
+
+Turn the handler off with one option, and use `polipagegin.ErrorMiddleware()` elsewhere in the chain if you want it on a single group:
+
+```go
+// main.go
+r.Use(polipagegin.Middleware(client, polipagegin.WithoutErrorHandler()))
+```
+
+Or branch inline:
+
+```go
+// invoice_handler.go
+pdf, err := client.Render.PDF(c.Request.Context(), input)
+if err != nil {
+	var pe *polipage.Error
+	if errors.As(err, &pe) {
+		switch {
+		case pe.IsAuthError():
+			c.AbortWithStatus(http.StatusUnauthorized)
+		case pe.IsRateLimitError():
+			c.AbortWithStatus(http.StatusTooManyRequests)
+		case pe.IsNetworkError():
+			c.AbortWithStatus(http.StatusBadGateway)
+		default:
+			c.AbortWithStatus(http.StatusInternalServerError)
+		}
+		return
+	}
+	c.AbortWithStatus(http.StatusInternalServerError)
+	return
+}
+```
+
+## Example
+
+```go
+// handlers.go
+func invoiceHandler(c *gin.Context) {
+	client := polipagegin.ClientFrom(c)
+
+	pdf, err := client.Render.PDF(c.Request.Context(), polipage.RenderInput{
+		Project:  "billing",
+		Template: "invoice",
+		Data:     map[string]any{"invoiceNumber": "INV-001"},
+	})
+	if err != nil {
+		_ = c.Error(err) // the middleware answers it as JSON
+		return
+	}
+	polipagegin.PDF(c, pdf, polipagegin.PDFOptions{Filename: "invoice.pdf"})
+}
+```
+
+## See also
+- [Middleware](../../concepts/middleware/)
+- [Observability](../observability/)
+- [Testing](../testing/)
