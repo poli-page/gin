@@ -26,7 +26,7 @@
 
   // revokeLastBlob releases the previous Blob URL before assigning a
   // new one — without this the browser leaks the PDF buffer for the
-  // page lifetime (plan §11.4 gotcha).
+  // page lifetime.
   const revokeLastBlob = () => {
     if (state.lastBlobUrl) {
       URL.revokeObjectURL(state.lastBlobUrl);

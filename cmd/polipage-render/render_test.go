@@ -57,9 +57,8 @@ func TestRender_StreamsThePDFOfTheRenderInput(t *testing.T) {
 	}, gotBody, "the render body names no version")
 }
 
-// TestExitCodeFor is the table-driven version the plan recommends as the
-// "easier option" (Step 8.2): drive the pure exit-code function with
-// synthetic *polipage.Error values, no RoundTripper plumbing.
+// TestExitCodeFor drives the pure exit-code function with synthetic
+// *polipage.Error values, no RoundTripper plumbing.
 func TestExitCodeFor(t *testing.T) {
 	tests := []struct {
 		name string
@@ -99,6 +98,11 @@ func TestExitCodeFor(t *testing.T) {
 		{
 			name: "500 Internal → 4 (5xx)",
 			err:  &polipage.Error{StatusCode: 500, Code: "INTERNAL_ERROR", Message: "server error"},
+			want: 4,
+		},
+		{
+			name: "invalid_response → 4 (a 2xx whose body is not JSON)",
+			err:  &polipage.Error{StatusCode: 200, Code: polipage.ErrCodeInvalidResponse, Message: "Invalid response: HTTP 200 body is not JSON"},
 			want: 4,
 		},
 		{

@@ -24,7 +24,7 @@ type PDFOptions struct {
 	Inline bool
 }
 
-// PDF writes a buffered PDF response per spec §8.1: status 200,
+// PDF writes a buffered PDF response: status 200,
 // Content-Type application/pdf, Content-Length, Cache-Control
 // "no-store, private", X-Content-Type-Options nosniff, and an RFC 5987
 // Content-Disposition (attachment by default, inline when
@@ -39,7 +39,7 @@ func PDF(c *gin.Context, body []byte, opts PDFOptions) {
 	c.Data(http.StatusOK, pdfContentType, body)
 }
 
-// Preview writes an HTML preview response per spec §8.2: status 200,
+// Preview writes an HTML preview response: status 200,
 // Content-Type "text/html; charset=utf-8", Cache-Control "no-store, private",
 // X-Content-Type-Options nosniff. No Content-Disposition — the response
 // is meant to be rendered, not downloaded.
@@ -66,7 +66,7 @@ func DocumentRedirect(c *gin.Context, descriptor *polipage.DocumentDescriptor) {
 	c.Writer.WriteHeaderNow()
 }
 
-// PDFStream writes a chunked PDF response per spec §8.1 + §8.3 — same
+// PDFStream writes a chunked PDF response — same
 // headers as PDF plus X-Accel-Buffering: no (opt nginx-style proxies out
 // of response buffering), and no Content-Length (the response is chunked).
 // Reads from body 32 KB at a time, writing and flushing each chunk so
@@ -75,7 +75,7 @@ func DocumentRedirect(c *gin.Context, descriptor *polipage.DocumentDescriptor) {
 //
 // PDFStream does NOT call body.Close() — the handler that obtained the
 // io.ReadCloser from client.Render.PDFStream is responsible for
-// `defer body.Close()` before invoking this helper (spec §8.3). The
+// `defer body.Close()` before invoking this helper. The
 // signature takes io.Reader (not io.ReadCloser) to advertise that policy.
 //
 // Passing a nil reader panics: a nil reader is a programmer error, not
@@ -117,7 +117,7 @@ func PDFStream(c *gin.Context, body io.Reader, opts PDFOptions) {
 
 	// gin.ResponseWriter unconditionally implements http.Flusher (its
 	// Flush() delegates to the underlying writer). The nil-check is a
-	// defensive guard for the spec §8.3 "exotic wrapper hides it" case.
+	// defensive guard for the "exotic wrapper hides it" case.
 	flusher, _ := c.Writer.(http.Flusher)
 	for {
 		if n > 0 {
@@ -205,7 +205,7 @@ func readFirstChunk(body io.Reader, buf []byte) (int, error) {
 }
 
 // Header values shared across helpers. Centralised so the values can be
-// audited in one place and the spec §8 contract stays consistent.
+// audited in one place and the response headers stay consistent.
 const (
 	pdfContentType  = "application/pdf"
 	htmlContentType = "text/html; charset=utf-8"
@@ -215,12 +215,12 @@ const (
 
 	// pdfStreamChunk is the Read/Write/Flush chunk size for PDFStream.
 	// Matches io.Copy's default and amortises the per-flush syscall cost
-	// across a sensible byte count (spec §8.3).
+	// across a sensible byte count.
 	pdfStreamChunk = 32 * 1024
 )
 
-// writePDFHeaders sets the headers shared by PDF and PDFStream per spec
-// §8.1 (excluding Content-Length, which PDF sets explicitly and PDFStream
+// writePDFHeaders sets the headers shared by PDF and PDFStream
+// (excluding Content-Length, which PDF sets explicitly and PDFStream
 // omits because the response is chunked; and X-Accel-Buffering, which is
 // streaming-only).
 func writePDFHeaders(c *gin.Context, opts PDFOptions) {

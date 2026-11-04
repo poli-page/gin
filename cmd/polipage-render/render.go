@@ -29,7 +29,7 @@ type renderRequest struct {
 }
 
 // render performs the render and writes the bytes to req.Out. Returns
-// the process exit code per spec §9.3 and an error for diagnostic
+// the process exit code (see exitCodeFor) and an error for diagnostic
 // logging (the caller writes it to stderr).
 //
 // The PDF is rendered via Render.PDFStream and the body is streamed
@@ -48,7 +48,7 @@ func render(ctx context.Context, req renderRequest) (int, error) {
 	return 0, nil
 }
 
-// exitCodeFor maps an SDK error to the spec §9.3 exit code:
+// exitCodeFor maps an SDK error to the CLI exit code:
 //
 //   - 1 — auth error  (IsAuthError: 401/403)
 //   - 2 — validation  (IsValidationError: 400)
