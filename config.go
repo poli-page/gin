@@ -55,7 +55,7 @@ type Config struct {
 var ErrInvalidConfig = errors.New("polipagegin: invalid configuration")
 
 // Environment variable names and validation bounds. Kept together so
-// the spec §7.2 contract is auditable in one place.
+// the configuration contract is auditable in one place.
 const (
 	envAPIKey     = "POLI_PAGE_API_KEY" //nolint:gosec // G101: env var name, not a credential
 	envBaseURL    = "POLI_PAGE_BASE_URL"

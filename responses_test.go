@@ -84,7 +84,7 @@ func TestPreview_SetsAllHeadersAndBody(t *testing.T) {
 	assert.Equal(t, "nosniff", w.Header().Get("X-Content-Type-Options"))
 	assert.Equal(t, html, w.Body.String())
 	assert.Empty(t, w.Header().Get("Content-Disposition"),
-		"Preview must NOT set Content-Disposition (spec §8.2)")
+		"Preview must NOT set Content-Disposition")
 }
 
 func TestDocumentRedirect_302WithLocationAndCacheControl(t *testing.T) {
@@ -155,14 +155,14 @@ func TestPDFStream_FlushesEveryChunk(t *testing.T) {
 		"streamed body must round-trip 100 KB without truncation or corruption")
 }
 
-// TestPDFStream_BodyIntactThroughDefaultRecorder is the spec §8.3 "the
+// TestPDFStream_BodyIntactThroughDefaultRecorder is the "the
 // helper falls through silently when an exotic wrapper hides the Flusher"
 // stand-in. In modern Go, httptest.NewRecorder DOES implement http.Flusher
 // — so a strict "non-flusher" probe is not directly testable through the
 // standard recorder. This test asserts the next best thing: PDFStream
 // completes cleanly (no panic, full body) through the framework-default
 // recorder. The defensive `if flusher != nil` branch in the implementation
-// remains as a guard for the theoretical case the spec describes.
+// remains as a guard for the theoretical case of a wrapper that hides the Flusher.
 func TestPDFStream_BodyIntactThroughDefaultRecorder(t *testing.T) {
 	data := make([]byte, 64*1024) // exactly two 32 KB chunks
 	for i := range data {

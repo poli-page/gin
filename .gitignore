@@ -6,7 +6,7 @@ coverage.*
 /example-app/example-app
 /example-app/output/
 
-# Go workspace files (kept out of integration repo per spec §12)
+# Go workspace files (kept out of the repository)
 go.work
 go.work.sum
 
