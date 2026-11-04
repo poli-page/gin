@@ -4,8 +4,22 @@ All notable changes to `poli-page/gin` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-04
+
+Requires `github.com/poli-page/sdk-go` 0.13 and passes the Poli Page API contract v0.13.0. The module now shares its major.minor with the Poli Page API, so it moves from 0.11 to 0.13; there was no 0.12 (see [CONTRIBUTING.md](CONTRIBUTING.md#versions)).
+
+### Added
+- Release checks: `scripts/check-release-versions.sh vX.Y.Z` fails unless the version's major.minor is the pinned API contract's (a stable contract tag on the commit `.github/workflows/ci.yml` pins, never the comment next to it) and the `github.com/poli-page/sdk-go` minor that `go.mod` and `example-app/go.mod` require (neither may `replace` it); the error names both versions. Run it before pushing a tag; the new Release workflow re-runs it, with a check of the `CHANGELOG` section, on every pushed `v*` tag.
+- `CONTRIBUTING.md`: a "Versions" section on how the module's versions follow the API's.
+
 ### Changed
+- **Breaking:** requires `github.com/poli-page/sdk-go` `v0.13.0` in both `go.mod` files. A `go.mod` requirement is a minimum, so keep the SDK on `0.13.x` while you use `0.13.x` of this module. With it:
+  - a `2xx` from the API whose body is not JSON (usually from a proxy or a captive portal) is `invalid_response` (was `INTERNAL_ERROR` with the `2xx` as its status). The error handler, `ErrorMiddleware` and `WriteError` answer it `502` with the SDK's `ToPayload()` as is, `{"code": "invalid_response", "message": "Invalid response: HTTP 200 body is not JSON", "status": 502, "requestId": ...}`; with SDK 0.11 they answered the `2xx` itself with an error body. `polipage-render` exits `4` for it.
+  - `polipage.RenderToFile` write failures are `io_error` (was `io_failed`), with no status: the error handler answers them `500` with `"status": null`.
+  - the PDF download of `Render.PDF` and `Render.PDFStream` is bounded by the client's timeout (`POLI_PAGE_TIMEOUT`, `Config.Timeout`): the whole download for `Render.PDF`, each read for `Render.PDFStream`.
+- CI pins the API contract v0.13.0 (was the commit tagged v0.12.0, once named v1.3.0) and runs its integration cases, including `impl.invalid-response`, against the example app; all six pass and none is skipped.
 - The live API CI job passes the optional `POLI_PAGE_BASE_URL` secret to the integration test and the CLI smoke test (unset: the SDK default), next to the `pp_sandbox_` key in `POLI_PAGE_API_KEY`. The integration test passes `POLI_PAGE_BASE_URL` to the client when it is set.
+- Example app: `github.com/stretchr/testify` `v1.12.1`, the version the root module already required.
 
 ## [0.11.0] - 2026-10-30
 
@@ -49,5 +63,6 @@ First release. The version matches the `github.com/poli-page/sdk-go` `v0.11.0` r
 - `gin.Recovery()` is a hard prerequisite: `polipagegin.ClientFrom` panics on misuse, and that panic must be caught by Gin's recovery middleware. `gin.Default()` includes it; `gin.New()` does not (you wire `r.Use(gin.Recovery())` yourself before `polipagegin.Middleware`).
 - The example app sets `gin.SetMode(gin.ReleaseMode)`, registers `gin.Recovery` explicitly, calls `r.SetTrustedProxies(nil)`, and drains in-flight renders via `http.Server.Shutdown` on `SIGTERM`. Production-shape on purpose — consumers copy this `main.go`.
 
-[Unreleased]: https://github.com/poli-page/gin/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/poli-page/gin/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/poli-page/gin/compare/v0.11.0...v0.13.0
 [0.11.0]: https://github.com/poli-page/gin/releases/tag/v0.11.0
