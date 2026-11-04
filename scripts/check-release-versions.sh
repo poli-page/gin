@@ -6,13 +6,15 @@
 #
 # The module shares its major.minor with the Poli Page API, and integration
 # 0.N requires github.com/poli-page/sdk-go 0.N.x. This script:
+#   - fails unless CHANGELOG.md has the release's `## [X.Y.Z] - ` section;
 #   - fails unless go.mod and example-app/go.mod require
 #     github.com/poli-page/sdk-go at a stable vX.Y.Z with the release's
 #     major.minor, and neither replaces it;
 #   - reads the contract commit pinned in .github/workflows/ci.yml (never its
-#     `# vX.Y.Z` comment), lists the contract repository's tags, and fails
-#     unless that commit carries a stable tag vX.Y.Z with the release's
-#     major.minor.
+#     `# vX.Y.Z` comment, and never a commented-out line), fails unless every
+#     workflow that pins the contract pins that same commit, lists the
+#     contract repository's tags, and fails unless that commit carries a
+#     stable tag vX.Y.Z with the release's major.minor.
 # Patch numbers are free.
 #
 # A Go release is the pushed tag itself, so run this before pushing the tag
@@ -23,7 +25,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WORKFLOW="$REPO_ROOT/.github/workflows/ci.yml"
+WORKFLOWS="$REPO_ROOT/.github/workflows"
+WORKFLOW="$WORKFLOWS/ci.yml"
 REMOTE="${API_CONTRACT_REMOTE:-https://github.com/poli-page/api-contract.git}"
 SDK_MODULE="github.com/poli-page/sdk-go"
 
@@ -35,6 +38,13 @@ if ! [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
   fail "release version '$1' is not vX.Y.Z"
 fi
 release_minor="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+
+# The CHANGELOG section of the release: the module has no version constant, so
+# this is where the repository names its version.
+if ! grep -qF "## [${version}] - " "$REPO_ROOT/CHANGELOG.md"; then
+  fail "CHANGELOG.md has no '## [${version}] - YYYY-MM-DD' section"
+fi
+echo "CHANGELOG.md has the ${version} section"
 
 # The SDK requirement: a `require` line (single or in a block) naming the SDK
 # module. go.mod cannot express an upper bound, so the required version itself
@@ -72,8 +82,27 @@ for manifest in go.mod example-app/go.mod; do
 done
 echo "$SDK_MODULE v$release_minor.x is required, matching release v$version"
 
-contract_sha="$(sed -n 's|.*uses: poli-page/api-contract@\([0-9a-f]\{40\}\).*|\1|p' "$WORKFLOW" | head -n 1)"
+# The contract commits a workflow pins, one per line. Commented-out lines are
+# skipped, so an old or a draft pin in a comment never counts.
+contract_pins() {
+  sed -n -e '/^[[:space:]]*#/d' \
+    -e 's|.*uses:[[:space:]]*poli-page/api-contract@\([0-9a-f]\{40\}\).*|\1|p' "$1"
+}
+
+contract_sha="$(contract_pins "$WORKFLOW" | head -n 1)"
 [ -n "$contract_sha" ] || fail "no poli-page/api-contract pin found in .github/workflows/ci.yml"
+
+# ci-tip.yml (and any other workflow) runs the same contract: a second pin
+# that differs would test the release against another contract version.
+for wf in "$WORKFLOWS"/*.yml "$WORKFLOWS"/*.yaml; do
+  [ -f "$wf" ] || continue
+  while IFS= read -r pin; do
+    [ -n "$pin" ] || continue
+    if [ "$pin" != "$contract_sha" ]; then
+      fail ".github/workflows/$(basename "$wf") pins the API contract ${pin:0:8}, but .github/workflows/ci.yml pins ${contract_sha:0:8}: pin the same commit in every workflow"
+    fi
+  done <<<"$(contract_pins "$wf")"
+done
 
 tags="$(git ls-remote --tags "$REMOTE")" || fail "cannot list the tags of $REMOTE"
 

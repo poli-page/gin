@@ -24,25 +24,14 @@ jobs:
     name: Version matches tag
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-
-      # The module has no version constant: the tag is its version, and the
-      # CHANGELOG section of the release is where the repository names it.
-      - name: CHANGELOG has the release section
-        run: |
-          set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
-          if ! grep -qF "## [${version}] - " CHANGELOG.md; then
-            echo "::error::CHANGELOG.md has no '## [${version}] - YYYY-MM-DD' section"
-            exit 1
-          fi
-          echo "CHANGELOG.md has the ${version} section"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # The module shares its major.minor with the Poli Page API: a release
       # X.Y.z must pass the API contract X.Y and require
-      # github.com/poli-page/sdk-go vX.Y.z. The script reads the contract
-      # commit ci.yml pins, requires a stable contract tag vX.Y.Z on it with
-      # the tag's major.minor, and checks the SDK requirement of go.mod and
-      # example-app/go.mod.
-      - name: Pinned API contract and required SDK match the tag's major.minor
+      # github.com/poli-page/sdk-go vX.Y.z. The script checks the CHANGELOG
+      # section of the release (the module has no version constant), the SDK
+      # requirement of go.mod and example-app/go.mod, and the contract commit
+      # the workflows pin: a stable contract tag vX.Y.Z on it with the tag's
+      # major.minor.
+      - name: CHANGELOG, required SDK and pinned API contract match the tag
         run: ./scripts/check-release-versions.sh "${GITHUB_REF_NAME}"
