@@ -17,8 +17,8 @@ jobs:
       fail-fast: false
       matrix:
         go: ['1.25']
-        # Oldest supported, previous minor, and the go.mod version.
-        gin: ['v1.9.1', 'v1.10.0', 'v1.12.0']
+        # From the oldest supported to the go.mod version (v1.12.0).
+        gin: ['v1.9.1', 'v1.10.0', 'v1.11.0', 'v1.12.0']
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
