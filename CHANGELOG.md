@@ -4,6 +4,9 @@ All notable changes to `poli-page/gin` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+### Changed
+- The nightly Go tip workflow tests Gin `v1.12.0` (the floor; it still pinned `v1.10.0`) and Gin `master`.
+
 ## [0.13.1] - 2026-11-05
 
 Fixes `PDFStream` on Gin v1.11 and later, and on HTTP/2. The Gin floor rises to `v1.12.0`; the module stays on `0.13`, the API's major.minor, so this ships as a patch.

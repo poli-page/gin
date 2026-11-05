@@ -253,7 +253,7 @@ The documentation site, <https://poli-page.github.io/gin/>, covers each topic on
 | `v0.13.0` | `v1.10` | `1.25+` |
 | `v0.13.1+` | `v1.12` | `1.25+` |
 
-`go.mod` requires Gin `v1.12.0`, so Go's minimal version selection never picks an older Gin for your build. CI also runs the suite against `v1.9.1`, `v1.10.0` and `v1.11.0` by downgrading inside this repository.
+`go.mod` requires Gin `v1.12.0`, so Go's minimal version selection never picks an older Gin for your build. CI also runs the suite against `v1.9.1`, `v1.10.0` and `v1.11.0` by downgrading inside this repository, as a canary that the code does not lean on anything newer; those versions are not supported for your build, since the requirement above wins. A nightly job runs Go tip against Gin `v1.12.0` and Gin `master`.
 
 The supported Go versions follow the upstream policy of "two latest stable releases".
 

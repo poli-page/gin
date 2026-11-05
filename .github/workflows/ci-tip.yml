@@ -3,6 +3,10 @@ name: CI (Go tip)
 # Early-warning coverage against the unreleased Go toolchain. Kept out of the
 # push/PR CI on purpose: a Go-tip break is upstream news, not a reason to red a
 # commit. Runs nightly and on demand; check it when it goes red.
+#
+# Two legs, both on Go tip: Gin v1.12.0 (the go.mod floor, what users build
+# against) tells a Go-tip break from a Gin one; Gin master is the early warning
+# for the next Gin release.
 on:
   schedule:
     - cron: '0 6 * * *'
@@ -11,6 +15,10 @@ on:
 jobs:
   test-tip:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        gin: ['v1.12.0', 'master']
     steps:
       - uses: actions/checkout@v7
       # setup-go cannot resolve a literal "tip"; bootstrap with stable, then
@@ -29,10 +37,10 @@ jobs:
         run: go version
       - name: Pin Gin version
         run: |
-          go get github.com/gin-gonic/gin@v1.10.0
+          go get github.com/gin-gonic/gin@${{ matrix.gin }}
           go mod tidy
           cd example-app
-          go get github.com/gin-gonic/gin@v1.10.0
+          go get github.com/gin-gonic/gin@${{ matrix.gin }}
           go mod tidy
       - name: Format check
         run: test -z "$(gofmt -l .)" || (gofmt -d .; exit 1)
