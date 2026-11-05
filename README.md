@@ -5,7 +5,7 @@
 [![Codeql](https://img.shields.io/github/actions/workflow/status/poli-page/gin/codeql.yml?branch=main&style=flat&logo=github&logoColor=ffffff&label=Codeql)](https://github.com/poli-page/gin/actions/workflows/codeql.yml)
 [![Coverage](https://img.shields.io/codecov/c/github/poli-page/gin?style=flat&logo=codecov&logoColor=ffffff&label=Coverage)](https://codecov.io/gh/poli-page/gin)
 [![Go](https://img.shields.io/badge/Go-1.25%2B-blue?style=flat&logo=go&logoColor=ffffff)](https://go.dev/)
-[![Gin](https://img.shields.io/badge/Gin-1.9%20%7C%201.10%20%7C%201.11%20%7C%201.12-blue?style=flat&logo=gin&logoColor=ffffff)](https://gin-gonic.com/)
+[![Gin](https://img.shields.io/badge/Gin-1.12-blue?style=flat&logo=gin&logoColor=ffffff)](https://gin-gonic.com/)
 [![Lint](https://img.shields.io/badge/Lint-golangci--lint-blue?style=flat&logo=go&logoColor=ffffff)](https://golangci-lint.run/)
 [![Go.dev](https://img.shields.io/badge/Go.dev-reference-blue?style=flat&logo=go&logoColor=ffffff)](https://pkg.go.dev/github.com/poli-page/gin)
 [![Deps](https://img.shields.io/badge/Deps-up%20to%20date-brightgreen?style=flat&logo=go&logoColor=ffffff)](https://github.com/poli-page/gin/network/dependencies)
