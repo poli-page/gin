@@ -11,6 +11,7 @@ All notable changes to `poli-page/gin` are documented here. Format follows [Keep
 
 ### Changed
 - The Release workflow creates the GitHub Release for the pushed tag, with the `CHANGELOG.md` section as its notes, once its version checks pass.
+- CI runs the suite on Gin `v1.12.0` too, the version `go.mod` requires since the Dependabot bump (was `v1.10.0`), next to `v1.9.1` and `v1.10.0`. Coverage is uploaded from the `v1.12.0` leg.
 
 ### Fixed
 - `PDFStream`: on Gin v1.11 and later, a failure after the first chunk behind a writer wrapper without `Unwrap` (such as `gin-contrib/gzip`) ended the chunked body cleanly, so a truncated PDF looked like a complete download. Gin's `Hijack` now refuses once body bytes are written, and the wrapper's `Hijack` reaches it. When a wrapper's own `Hijack` fails, the helper now hijacks the writer the wrapper embeds, down to the server's, and the client sees an incomplete transfer again.
