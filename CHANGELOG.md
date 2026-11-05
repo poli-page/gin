@@ -10,6 +10,7 @@ All notable changes to `poli-page/gin` are documented here. Format follows [Keep
 - The README badge row, as on `poli-page/sdk-go` and with a Gin chip.
 
 ### Changed
+- `go.mod` requires Gin `v1.12.0` (was `v1.10.0`).
 - The Release workflow creates the GitHub Release for the pushed tag, with the `CHANGELOG.md` section as its notes, once its version checks pass.
 - CI runs the suite on Gin `v1.11.0` and `v1.12.0` too, next to `v1.9.1` and `v1.10.0`. Coverage is uploaded from the `v1.12.0` leg only.
 

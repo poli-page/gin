@@ -5,7 +5,7 @@
 [![Codeql](https://img.shields.io/github/actions/workflow/status/poli-page/gin/codeql.yml?branch=main&style=flat&logo=github&logoColor=ffffff&label=Codeql)](https://github.com/poli-page/gin/actions/workflows/codeql.yml)
 [![Coverage](https://img.shields.io/codecov/c/github/poli-page/gin?style=flat&logo=codecov&logoColor=ffffff&label=Coverage)](https://codecov.io/gh/poli-page/gin)
 [![Go](https://img.shields.io/badge/Go-1.25%2B-blue?style=flat&logo=go&logoColor=ffffff)](https://go.dev/)
-[![Gin](https://img.shields.io/badge/Gin-1.9%20%7C%201.10%20%7C%201.12-blue?style=flat&logo=gin&logoColor=ffffff)](https://gin-gonic.com/)
+[![Gin](https://img.shields.io/badge/Gin-1.9%20%7C%201.10%20%7C%201.11%20%7C%201.12-blue?style=flat&logo=gin&logoColor=ffffff)](https://gin-gonic.com/)
 [![Lint](https://img.shields.io/badge/Lint-golangci--lint-blue?style=flat&logo=go&logoColor=ffffff)](https://golangci-lint.run/)
 [![Go.dev](https://img.shields.io/badge/Go.dev-reference-blue?style=flat&logo=go&logoColor=ffffff)](https://pkg.go.dev/github.com/poli-page/gin)
 [![Deps](https://img.shields.io/badge/Deps-up%20to%20date-brightgreen?style=flat&logo=go&logoColor=ffffff)](https://github.com/poli-page/gin/network/dependencies)
@@ -249,9 +249,11 @@ The documentation site, <https://poli-page.github.io/gin/>, covers each topic on
 
 | Package | Gin | Go |
 |---|---|---|
-| `v0.13.x` | `v1.12` | `1.25+` |
+| `v0.11.x` | `v1.10` | `1.25+` |
+| `v0.13.0` | `v1.10` | `1.25+` |
+| `v0.13.1+` | `v1.12` | `1.25+` |
 
-`go.mod` requires Gin `v1.12.0`, so Go's minimal version selection never picks an older Gin for your build. CI also runs the suite against `v1.9.1` and `v1.10.0` by downgrading inside this repository.
+`go.mod` requires Gin `v1.12.0`, so Go's minimal version selection never picks an older Gin for your build. CI also runs the suite against `v1.9.1`, `v1.10.0` and `v1.11.0` by downgrading inside this repository.
 
 The supported Go versions follow the upstream policy of "two latest stable releases".
 
