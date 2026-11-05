@@ -4,6 +4,10 @@ All notable changes to `poli-page/gin` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-11-05
+
+Fixes `PDFStream` on Gin v1.11 and later, and on HTTP/2. The Gin floor rises to `v1.12.0`; the module stays on `0.13`, the API's major.minor, so this ships as a patch.
+
 ### Added
 - A documentation site at <https://poli-page.github.io/gin/>, built from `docs/` and deployed by the new Docs workflow. It replaces the six pages that were in `docs/*.md`, and the README links to the site.
 - CodeQL workflow, and coverage uploaded to Codecov from CI.
@@ -77,6 +81,7 @@ First release. The version matches the `github.com/poli-page/sdk-go` `v0.11.0` r
 - `gin.Recovery()` is a hard prerequisite: `polipagegin.ClientFrom` panics on misuse, and that panic must be caught by Gin's recovery middleware. `gin.Default()` includes it; `gin.New()` does not (you wire `r.Use(gin.Recovery())` yourself before `polipagegin.Middleware`).
 - The example app sets `gin.SetMode(gin.ReleaseMode)`, registers `gin.Recovery` explicitly, calls `r.SetTrustedProxies(nil)`, and drains in-flight renders via `http.Server.Shutdown` on `SIGTERM`. Production-shape on purpose — consumers copy this `main.go`.
 
-[Unreleased]: https://github.com/poli-page/gin/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/poli-page/gin/compare/v0.13.1...HEAD
+[0.13.1]: https://github.com/poli-page/gin/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/poli-page/gin/compare/v0.11.0...v0.13.0
 [0.11.0]: https://github.com/poli-page/gin/releases/tag/v0.11.0

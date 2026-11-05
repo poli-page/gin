@@ -41,7 +41,7 @@ This package wires the [Poli Page Go SDK](https://github.com/poli-page/sdk-go) i
 ## Install
 
 ```bash
-go get github.com/poli-page/gin@v0.13.0 github.com/poli-page/sdk-go@v0.13.0
+go get github.com/poli-page/gin@v0.13.1 github.com/poli-page/sdk-go@v0.13.0
 ```
 
 Set your key in the environment:
