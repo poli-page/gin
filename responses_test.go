@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -200,7 +201,7 @@ func TestPDFStream_MidStreamErrorAttachedToGinErrors(t *testing.T) {
 	reader := &erroringReader{data: partial, err: fail}
 
 	c, w := newResponseTestContext()
-	// A ResponseRecorder cannot be hijacked: PDFStream aborts with
+	// A ResponseRecorder has no write deadline: PDFStream aborts with
 	// net/http's ErrAbortHandler panic instead.
 	assert.PanicsWithValue(t, http.ErrAbortHandler, func() {
 		polipagegin.PDFStream(c, reader, polipagegin.PDFOptions{Filename: "x.pdf"})
@@ -322,9 +323,7 @@ func TestPDFStream_MidStreamFailureCutsTheConnection(t *testing.T) {
 }
 
 func TestPDFStream_MidStreamFailureOverHTTP2AbortsTheStream(t *testing.T) {
-	// HTTP/2 writers cannot be hijacked: PDFStream panics with
-	// http.ErrAbortHandler and net/http resets the stream (without
-	// gin.Recovery, which would catch that panic).
+	// The write deadline resets the HTTP/2 stream.
 	resp, body, readErr := getBody(t, midStreamServer(t, true, false))
 
 	assert.Equal(t, 2, resp.ProtoMajor)
@@ -333,9 +332,20 @@ func TestPDFStream_MidStreamFailureOverHTTP2AbortsTheStream(t *testing.T) {
 	assert.Error(t, readErr, "the client must see the stream reset")
 }
 
+func TestPDFStream_MidStreamFailureOverHTTP2BehindRecoveryResetsTheStream(t *testing.T) {
+	// Behind gin.Recovery, an http.ErrAbortHandler panic would be caught
+	// and the stream would end cleanly; the write deadline resets it.
+	resp, body, readErr := getBody(t, midStreamServer(t, true, true))
+
+	assert.Equal(t, 2, resp.ProtoMajor)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "%PDF-1.4 partial", string(body))
+	assert.Error(t, readErr, "the client must see the stream reset, not a clean end of stream")
+}
+
 // noUnwrapWriter wraps gin's writer the way some middleware do (for
-// example gin-contrib/gzip): it embeds gin.ResponseWriter, so it has
-// Hijack, but no Unwrap.
+// example gin-contrib/gzip): it embeds gin.ResponseWriter, but has no
+// Unwrap.
 type noUnwrapWriter struct{ gin.ResponseWriter }
 
 func TestPDFStream_MidStreamFailureBehindAWrapperWithoutUnwrapPanicsWithErrAbortHandler(t *testing.T) {
@@ -343,8 +353,8 @@ func TestPDFStream_MidStreamFailureBehindAWrapperWithoutUnwrapPanicsWithErrAbort
 	c, w := newResponseTestContext()
 	c.Writer = noUnwrapWriter{c.Writer}
 
-	// The wrapper's Hijack reaches gin's, which panics on a recorder; the
-	// helper must still abort with exactly http.ErrAbortHandler.
+	// The walk reaches the recorder, which has no write deadline; the
+	// helper must abort with exactly http.ErrAbortHandler.
 	assert.PanicsWithValue(t, http.ErrAbortHandler, func() {
 		polipagegin.PDFStream(c, reader, polipagegin.PDFOptions{Filename: "x.pdf"})
 	})
@@ -368,24 +378,123 @@ func TestPDFStream_MidStreamFailureBehindAWrapperWithoutUnwrapCutsTheConnection(
 	resp, body, readErr := getBody(t, srv)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, "%PDF-1.4 partial", string(body))
-	assert.ErrorIs(t, readErr, io.ErrUnexpectedEOF, "the wrapper's own Hijack still cuts an HTTP/1.1 connection")
+	assert.ErrorIs(t, readErr, io.ErrUnexpectedEOF, "the writer the wrapper embeds still cuts an HTTP/1.1 connection")
+}
+
+// refusingHijackWriter is a wrapper without Unwrap whose own Hijack
+// refuses, as gin's does once body bytes are written (gin v1.11+).
+type refusingHijackWriter struct{ gin.ResponseWriter }
+
+func (refusingHijackWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return nil, nil, errors.New("hijack refused")
+}
+
+// pointerWrapperWriter wraps gin's writer through a pointer, the way
+// gin-contrib/gzip's gzipWriter does.
+type pointerWrapperWriter struct {
+	gin.ResponseWriter
+	wrote int
+}
+
+func (w *pointerWrapperWriter) Write(p []byte) (int, error) {
+	w.wrote += len(p)
+	return w.ResponseWriter.Write(p)
+}
+
+func TestPDFStream_MidStreamFailureBehindWrappersWithoutUnwrapCutsTheConnection(t *testing.T) {
+	cases := map[string]func(gin.ResponseWriter) gin.ResponseWriter{
+		"own Hijack refuses": func(w gin.ResponseWriter) gin.ResponseWriter { return refusingHijackWriter{w} },
+		"pointer wrapper":    func(w gin.ResponseWriter) gin.ResponseWriter { return &pointerWrapperWriter{ResponseWriter: w} },
+		"two layers": func(w gin.ResponseWriter) gin.ResponseWriter {
+			return &pointerWrapperWriter{ResponseWriter: refusingHijackWriter{w}}
+		},
+	}
+	for name, wrap := range cases {
+		t.Run(name, func(t *testing.T) {
+			r := gin.New()
+			r.Use(gin.Recovery(), func(c *gin.Context) {
+				c.Writer = wrap(c.Writer)
+				c.Next()
+			})
+			r.GET("/", func(c *gin.Context) {
+				polipagegin.PDFStream(c, &erroringReader{data: []byte("%PDF-1.4 partial"), err: errors.New("cut")}, polipagegin.PDFOptions{Filename: "a.pdf"})
+			})
+			srv := httptest.NewServer(r)
+			t.Cleanup(srv.Close)
+
+			resp, body, readErr := getBody(t, srv)
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+			assert.Equal(t, "%PDF-1.4 partial", string(body))
+			assert.ErrorIs(t, readErr, io.ErrUnexpectedEOF,
+				"the server's writer is reached through the wrapper, whatever its own Hijack does")
+		})
+	}
+}
+
+func TestPDFStream_MidStreamFailureBehindARefusingWrapperOnARecorderPanicsWithErrAbortHandler(t *testing.T) {
+	reader := &erroringReader{data: []byte("%PDF-1.4 partial"), err: errors.New("cut")}
+	c, w := newResponseTestContext()
+	c.Writer = &pointerWrapperWriter{ResponseWriter: refusingHijackWriter{c.Writer}}
+
+	// The walk reaches the recorder at the bottom, which has no write
+	// deadline, so the helper aborts with exactly http.ErrAbortHandler.
+	assert.PanicsWithValue(t, http.ErrAbortHandler, func() {
+		polipagegin.PDFStream(c, reader, polipagegin.PDFOptions{Filename: "x.pdf"})
+	})
+	require.Len(t, c.Errors, 1)
+	assert.Equal(t, "%PDF-1.4 partial", w.Body.String())
 }
 
 // panickingHijackWriter is a wrapper whose Hijack has a bug of its own.
-type panickingHijackWriter struct{ gin.ResponseWriter }
+// It records the call, since a recovery middleware would hide the panic.
+type panickingHijackWriter struct {
+	gin.ResponseWriter
+	hijacked *atomic.Bool
+}
 
-func (panickingHijackWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+func (w panickingHijackWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	w.hijacked.Store(true)
 	panic("boom: unrelated bug")
 }
 
-func TestPDFStream_MidStreamFailureKeepsAnUnrelatedHijackPanic(t *testing.T) {
-	reader := &erroringReader{data: []byte("%PDF-1.4 partial"), err: errors.New("cut")}
-	c, _ := newResponseTestContext()
-	c.Writer = panickingHijackWriter{c.Writer}
+func TestPDFStream_MidStreamFailureNeverCallsAWrappersHijack(t *testing.T) {
+	var hijacked atomic.Bool
+	r := gin.New()
+	r.Use(gin.Recovery(), func(c *gin.Context) {
+		c.Writer = panickingHijackWriter{ResponseWriter: c.Writer, hijacked: &hijacked}
+		c.Next()
+	})
+	r.GET("/", func(c *gin.Context) {
+		polipagegin.PDFStream(c, &erroringReader{data: []byte("%PDF-1.4 partial"), err: errors.New("cut")}, polipagegin.PDFOptions{Filename: "a.pdf"})
+	})
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
 
-	// Only gin's type assertion panic means "cannot hijack"; a wrapper's
-	// own bug must reach the caller unchanged, not become ErrAbortHandler.
-	assert.PanicsWithValue(t, "boom: unrelated bug", func() {
+	// Behind Recovery, a call to the wrapper's Hijack would be caught and
+	// the chunked body would end cleanly. The deadline cuts the connection.
+	resp, body, readErr := getBody(t, srv)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "%PDF-1.4 partial", string(body))
+	assert.ErrorIs(t, readErr, io.ErrUnexpectedEOF)
+	assert.False(t, hijacked.Load(), "the wrapper's Hijack must never be called")
+}
+
+// ginWriter is an unexported name for gin.ResponseWriter: a struct that
+// embeds it has an unexported field, which the walk does not read.
+type ginWriter = gin.ResponseWriter
+
+// hiddenWriter embeds gin's writer under an unexported name and has no
+// Unwrap, so the walk cannot see through it.
+type hiddenWriter struct{ ginWriter }
+
+func TestPDFStream_MidStreamFailureBehindAWrapperThatHidesItsWriterPanicsWithErrAbortHandler(t *testing.T) {
+	reader := &erroringReader{data: []byte("%PDF-1.4 partial"), err: errors.New("cut")}
+	c, w := newResponseTestContext()
+	c.Writer = &hiddenWriter{c.Writer}
+
+	assert.PanicsWithValue(t, http.ErrAbortHandler, func() {
 		polipagegin.PDFStream(c, reader, polipagegin.PDFOptions{Filename: "x.pdf"})
 	})
+	require.Len(t, c.Errors, 1)
+	assert.Equal(t, "%PDF-1.4 partial", w.Body.String())
 }

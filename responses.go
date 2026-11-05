@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"runtime"
+	"reflect"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	polipage "github.com/poli-page/sdk-go"
@@ -92,12 +93,16 @@ func DocumentRedirect(c *gin.Context, descriptor *polipage.DocumentDescriptor) {
 // attached to c.Errors via c.Error(...), and the response is cut short so
 // the client sees a truncated transfer instead of a complete-looking PDF:
 // the status and the bytes already sent cannot be taken back, so PDFStream
-// closes the connection without ending the chunked body. When the
-// connection cannot be hijacked (HTTP/2, a ResponseRecorder, or a writer
-// wrapper without Unwrap whose Hijack fails or panics), it panics with
-// http.ErrAbortHandler, net/http's signal to abort the response.
-// gin.Recovery() catches that panic, so behind Recovery such a stream ends
-// as a short 200 (and gin v1.9/v1.10 Recovery logs a stack trace for it).
+// sets a write deadline in the past on the server's own writer, which it
+// reaches through writer wrappers (see abortResponse): net/http closes the
+// HTTP/1.x connection without ending the chunked body, or resets the
+// HTTP/2 stream, also behind gin.Recovery(). When the deadline cannot be
+// set (a ResponseRecorder, or a wrapper that hides its writer), it panics
+// with http.ErrAbortHandler, net/http's signal to abort the response.
+// gin.Recovery() catches that panic, so behind Recovery such a response
+// ends as a short 200: gin v1.9 to v1.11 Recovery logs it with a stack
+// trace; v1.12 logs the error and a request dump without a stack, and adds
+// "net/http: abort Handler" to c.Errors.
 // On the panic path, middleware code after c.Next() (gin.Logger, for one)
 // does not run unless a recovery middleware sits inside it.
 func PDFStream(c *gin.Context, body io.Reader, opts PDFOptions) {
@@ -145,51 +150,79 @@ func PDFStream(c *gin.Context, body io.Reader, opts PDFOptions) {
 }
 
 // abortResponse cuts a response whose status and first bytes are already
-// on the wire, so the client sees an incomplete transfer. It hijacks and
-// closes the connection of the server's own writer: gin's writer, and any
-// wrapper that implements Unwrap, are looked through, because gin's own
-// Hijack panics when the writer under it cannot hijack. A wrapper without
-// Unwrap (gin-contrib/gzip, for example) stops that walk, so its Hijack
-// may reach gin's and panic with a type assertion error: that panic is
-// recovered and treated as "cannot hijack" (any other panic is
-// re-raised). Without a hijackable writer it panics with
-// http.ErrAbortHandler, always that value.
+// on the wire, so the client sees an incomplete transfer. It sets a write
+// deadline in the past on the server's own writer (see serverWriter):
+// net/http then closes the HTTP/1.x connection without the chunked body's
+// last chunk, or resets the HTTP/2 stream. The handler returns normally,
+// so this holds behind gin.Recovery() and middleware after c.Next() run.
+//
+// When the deadline cannot be set (any error: http.ErrNotSupported for a
+// ResponseRecorder or a wrapper that hides its writer, or a connection
+// already closed), it panics with http.ErrAbortHandler, always that value.
 func abortResponse(c *gin.Context) {
-	var w http.ResponseWriter = c.Writer
-	for {
-		u, ok := w.(interface{ Unwrap() http.ResponseWriter })
-		if !ok {
-			break
-		}
-		w = u.Unwrap()
+	rc := http.NewResponseController(serverWriter(c.Writer))
+	if err := rc.SetWriteDeadline(time.Now().Add(-time.Second)); err != nil {
+		panic(http.ErrAbortHandler)
 	}
-	if hj, ok := w.(http.Hijacker); ok && closeHijacked(hj) {
-		c.Abort()
-		return
-	}
-	panic(http.ErrAbortHandler)
+	c.Abort()
 }
 
-// closeHijacked hijacks and closes the connection behind hj. It reports
-// false when the hijack fails, including when hj's Hijack panics with a
-// type assertion error: gin's writer does so when the writer under it is
-// not an http.Hijacker. Any other panic is a bug elsewhere and is
-// re-raised unchanged.
-func closeHijacked(hj http.Hijacker) (closed bool) {
-	defer func() {
-		if r := recover(); r != nil {
-			if _, ok := r.(*runtime.TypeAssertionError); !ok {
-				panic(r)
-			}
-			closed = false
+// serverWriter walks down the writer chain from w to the writer the
+// server gave the handler: through Unwrap (gin's own writer, and wrappers
+// that follow the http.ResponseController convention), and through the
+// writer a wrapper without Unwrap embeds (see embeddedWriter). It returns
+// the last writer it reaches.
+func serverWriter(w http.ResponseWriter) http.ResponseWriter {
+	for {
+		var next http.ResponseWriter
+		if u, ok := w.(interface{ Unwrap() http.ResponseWriter }); ok {
+			next = u.Unwrap()
+		} else {
+			next = embeddedWriter(w)
 		}
-	}()
-	conn, _, err := hj.Hijack()
-	if err != nil {
-		return false
+		if next == nil {
+			return w
+		}
+		w = next
 	}
-	_ = conn.Close()
-	return true
+}
+
+// embeddedWriter returns the http.ResponseWriter that w embeds, or nil when
+// there is none. Middleware wrap gin's writer by embedding it (a struct
+// with an anonymous gin.ResponseWriter field, gin-contrib/gzip's
+// gzipWriter for one), often without an Unwrap method, which leaves the
+// embedded writer reachable only through reflection. Only exported
+// embedded fields are read; a writer that embeds none, or embeds a nil
+// one, ends the walk.
+func embeddedWriter(w http.ResponseWriter) http.ResponseWriter {
+	v := reflect.ValueOf(w)
+	if v.Kind() == reflect.Pointer {
+		if v.IsNil() {
+			return nil
+		}
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return nil
+	}
+	t := v.Type()
+	for i := range t.NumField() {
+		f := t.Field(i)
+		if !f.Anonymous || !f.IsExported() {
+			continue
+		}
+		fv := v.Field(i)
+		if fv.Kind() == reflect.Interface && fv.IsNil() {
+			continue
+		}
+		if fv.Kind() == reflect.Pointer && fv.IsNil() {
+			continue
+		}
+		if inner, ok := fv.Interface().(http.ResponseWriter); ok {
+			return inner
+		}
+	}
+	return nil
 }
 
 // readFirstChunk reads until it gets at least one byte or an error, so a
