@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -445,16 +446,22 @@ func TestPDFStream_MidStreamFailureBehindARefusingWrapperOnARecorderPanicsWithEr
 }
 
 // panickingHijackWriter is a wrapper whose Hijack has a bug of its own.
-type panickingHijackWriter struct{ gin.ResponseWriter }
+// It records the call, since a recovery middleware would hide the panic.
+type panickingHijackWriter struct {
+	gin.ResponseWriter
+	hijacked *atomic.Bool
+}
 
-func (panickingHijackWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+func (w panickingHijackWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	w.hijacked.Store(true)
 	panic("boom: unrelated bug")
 }
 
 func TestPDFStream_MidStreamFailureNeverCallsAWrappersHijack(t *testing.T) {
+	var hijacked atomic.Bool
 	r := gin.New()
-	r.Use(func(c *gin.Context) {
-		c.Writer = panickingHijackWriter{c.Writer}
+	r.Use(gin.Recovery(), func(c *gin.Context) {
+		c.Writer = panickingHijackWriter{ResponseWriter: c.Writer, hijacked: &hijacked}
 		c.Next()
 	})
 	r.GET("/", func(c *gin.Context) {
@@ -463,12 +470,13 @@ func TestPDFStream_MidStreamFailureNeverCallsAWrappersHijack(t *testing.T) {
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)
 
-	// No recovery middleware: a call to the wrapper's Hijack would panic
-	// out of the handler. The deadline cuts the connection instead.
+	// Behind Recovery, a call to the wrapper's Hijack would be caught and
+	// the chunked body would end cleanly. The deadline cuts the connection.
 	resp, body, readErr := getBody(t, srv)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, "%PDF-1.4 partial", string(body))
 	assert.ErrorIs(t, readErr, io.ErrUnexpectedEOF)
+	assert.False(t, hijacked.Load(), "the wrapper's Hijack must never be called")
 }
 
 // ginWriter is an unexported name for gin.ResponseWriter: a struct that

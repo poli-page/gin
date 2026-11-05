@@ -156,9 +156,9 @@ func PDFStream(c *gin.Context, body io.Reader, opts PDFOptions) {
 // last chunk, or resets the HTTP/2 stream. The handler returns normally,
 // so this holds behind gin.Recovery() and middleware after c.Next() run.
 //
-// When the deadline cannot be set (http.ErrNotSupported: a
-// ResponseRecorder, or a wrapper that hides its writer), it panics with
-// http.ErrAbortHandler, always that value.
+// When the deadline cannot be set (any error: http.ErrNotSupported for a
+// ResponseRecorder or a wrapper that hides its writer, or a connection
+// already closed), it panics with http.ErrAbortHandler, always that value.
 func abortResponse(c *gin.Context) {
 	rc := http.NewResponseController(serverWriter(c.Writer))
 	if err := rc.SetWriteDeadline(time.Now().Add(-time.Second)); err != nil {
