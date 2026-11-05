@@ -29,13 +29,13 @@ When the document also goes to storage or an audit trail, `Render.Document` retu
 
 Once the helper has written status `200` and the first chunk, it cannot upgrade to a `500`. It queues the error with `c.Error(err)` and cuts the response so the client sees a truncated transfer (`unexpected EOF`) instead of a complete-looking PDF:
 
-- It hijacks and closes the HTTP/1.x connection. It looks through gin's writer and any wrapper that implements `Unwrap`. A wrapper without `Unwrap`, such as `gin-contrib/gzip`, is hijacked through its own `Hijack`.
-- When the connection cannot be hijacked (HTTP/2, a `httptest.ResponseRecorder`, or a wrapper whose `Hijack` fails or panics with gin's type assertion error), it panics with `http.ErrAbortHandler`, which makes `net/http` reset the stream. Any other panic from a wrapper's `Hijack` is passed on unchanged.
-- `gin.Recovery()` catches that panic and finishes the response normally. Behind Recovery, an HTTP/2 stream cut midway therefore ends as a short `200`, and Gin v1.9 and v1.10 Recovery log a stack trace for it. If that matters, compare the downloaded size with the document's `sizeBytes`.
+- It hijacks and closes the HTTP/1.x connection. It looks through gin's writer and any wrapper that implements `Unwrap`. A wrapper without `Unwrap`, such as `gin-contrib/gzip`, is tried through its own `Hijack` first. When that fails, the helper goes on into the writer the wrapper embeds: Gin v1.11 and later refuse to hijack once body bytes are written, so through `gin-contrib/gzip` the connection is reached this way.
+- When no writer in that chain can hijack the connection (HTTP/2, a `httptest.ResponseRecorder`), it panics with `http.ErrAbortHandler`, which makes `net/http` reset the stream. A wrapper's `Hijack` that fails, or panics with gin's type assertion error, counts as unable to hijack. Any other panic from a wrapper's `Hijack` is passed on unchanged.
+- `gin.Recovery()` catches that panic and finishes the response normally. Behind Recovery, an HTTP/2 stream cut midway therefore ends as a short `200`, Gin v1.9 to v1.11 Recovery log a stack trace for it, and v1.12 logs the error only. If that matters, compare the downloaded size with the document's `sizeBytes`.
 - On the panic path, middleware code after `c.Next()` (such as `gin.Logger` or your own logging of `c.Errors`) runs only if a recovery middleware sits inside it.
 - In your tests, a mid-stream failure through `httptest.NewRecorder` or `gin.CreateTestContext` panics with `http.ErrAbortHandler` unless a recovery middleware catches it. Recover it, or assert the panic.
 
-This is tested on Gin v1.9 and v1.10, the versions CI runs. Later Gin versions refuse to hijack once body bytes are written, so behind a wrapper without `Unwrap` such a stream may end as a short `200` there. Plan alerts accordingly.
+This is tested on Gin v1.9, v1.10 and v1.12, the versions CI runs.
 
 ## Example
 

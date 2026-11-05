@@ -12,6 +12,9 @@ All notable changes to `poli-page/gin` are documented here. Format follows [Keep
 ### Changed
 - The Release workflow creates the GitHub Release for the pushed tag, with the `CHANGELOG.md` section as its notes, once its version checks pass.
 
+### Fixed
+- `PDFStream`: on Gin v1.11 and later, a failure after the first chunk behind a writer wrapper without `Unwrap` (such as `gin-contrib/gzip`) ended the chunked body cleanly, so a truncated PDF looked like a complete download. Gin's `Hijack` now refuses once body bytes are written, and the wrapper's `Hijack` reaches it. When a wrapper's own `Hijack` fails, the helper now hijacks the writer the wrapper embeds, down to the server's, and the client sees an incomplete transfer again.
+
 ## [0.13.0] - 2026-11-04
 
 Requires `github.com/poli-page/sdk-go` 0.13 and passes the Poli Page API contract v0.13.0. The module now shares its major.minor with the Poli Page API, so it moves from 0.11 to 0.13; there was no 0.12 (see [CONTRIBUTING.md](CONTRIBUTING.md#versions)).

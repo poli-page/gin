@@ -371,6 +371,70 @@ func TestPDFStream_MidStreamFailureBehindAWrapperWithoutUnwrapCutsTheConnection(
 	assert.ErrorIs(t, readErr, io.ErrUnexpectedEOF, "the wrapper's own Hijack still cuts an HTTP/1.1 connection")
 }
 
+// refusingHijackWriter is a wrapper without Unwrap whose own Hijack
+// refuses, as gin's does once body bytes are written (gin v1.11+).
+type refusingHijackWriter struct{ gin.ResponseWriter }
+
+func (refusingHijackWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return nil, nil, errors.New("hijack refused")
+}
+
+// pointerWrapperWriter wraps gin's writer through a pointer, the way
+// gin-contrib/gzip's gzipWriter does.
+type pointerWrapperWriter struct {
+	gin.ResponseWriter
+	wrote int
+}
+
+func (w *pointerWrapperWriter) Write(p []byte) (int, error) {
+	w.wrote += len(p)
+	return w.ResponseWriter.Write(p)
+}
+
+func TestPDFStream_MidStreamFailureBehindWrappersWithoutUnwrapCutsTheConnection(t *testing.T) {
+	cases := map[string]func(gin.ResponseWriter) gin.ResponseWriter{
+		"own Hijack refuses": func(w gin.ResponseWriter) gin.ResponseWriter { return refusingHijackWriter{w} },
+		"pointer wrapper":    func(w gin.ResponseWriter) gin.ResponseWriter { return &pointerWrapperWriter{ResponseWriter: w} },
+		"two layers": func(w gin.ResponseWriter) gin.ResponseWriter {
+			return &pointerWrapperWriter{ResponseWriter: refusingHijackWriter{w}}
+		},
+	}
+	for name, wrap := range cases {
+		t.Run(name, func(t *testing.T) {
+			r := gin.New()
+			r.Use(gin.Recovery(), func(c *gin.Context) {
+				c.Writer = wrap(c.Writer)
+				c.Next()
+			})
+			r.GET("/", func(c *gin.Context) {
+				polipagegin.PDFStream(c, &erroringReader{data: []byte("%PDF-1.4 partial"), err: errors.New("cut")}, polipagegin.PDFOptions{Filename: "a.pdf"})
+			})
+			srv := httptest.NewServer(r)
+			t.Cleanup(srv.Close)
+
+			resp, body, readErr := getBody(t, srv)
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+			assert.Equal(t, "%PDF-1.4 partial", string(body))
+			assert.ErrorIs(t, readErr, io.ErrUnexpectedEOF,
+				"the writer the wrapper embeds is hijacked when the wrapper's own Hijack fails")
+		})
+	}
+}
+
+func TestPDFStream_MidStreamFailureBehindARefusingWrapperOnARecorderPanicsWithErrAbortHandler(t *testing.T) {
+	reader := &erroringReader{data: []byte("%PDF-1.4 partial"), err: errors.New("cut")}
+	c, w := newResponseTestContext()
+	c.Writer = &pointerWrapperWriter{ResponseWriter: refusingHijackWriter{c.Writer}}
+
+	// Every writer in the chain is tried; the recorder at the bottom cannot
+	// hijack, so the helper aborts with exactly http.ErrAbortHandler.
+	assert.PanicsWithValue(t, http.ErrAbortHandler, func() {
+		polipagegin.PDFStream(c, reader, polipagegin.PDFOptions{Filename: "x.pdf"})
+	})
+	require.Len(t, c.Errors, 1)
+	assert.Equal(t, "%PDF-1.4 partial", w.Body.String())
+}
+
 // panickingHijackWriter is a wrapper whose Hijack has a bug of its own.
 type panickingHijackWriter struct{ gin.ResponseWriter }
 
