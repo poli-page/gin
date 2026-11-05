@@ -14,7 +14,7 @@ All notable changes to `poli-page/gin` are documented here. Format follows [Keep
 - CI runs the suite on Gin `v1.12.0` too, the version `go.mod` requires since the Dependabot bump (was `v1.10.0`), next to `v1.9.1` and `v1.10.0`. Coverage is uploaded from the `v1.12.0` leg.
 
 ### Fixed
-- `PDFStream`: on Gin v1.11 and later, a failure after the first chunk behind a writer wrapper without `Unwrap` (such as `gin-contrib/gzip`) ended the chunked body cleanly, so a truncated PDF looked like a complete download. Gin's `Hijack` now refuses once body bytes are written, and the wrapper's `Hijack` reaches it. When a wrapper's own `Hijack` fails, the helper now hijacks the writer the wrapper embeds, down to the server's, and the client sees an incomplete transfer again.
+- `PDFStream`: a failure after the first chunk ended as a short `200` that looks complete in two cases: on Gin v1.11 and later behind a writer wrapper without `Unwrap` (such as `gin-contrib/gzip`), because Gin's `Hijack` now refuses once body bytes are written; and over HTTP/2 behind `gin.Recovery()`. The helper no longer hijacks: it sets a write deadline in the past on the server's own writer, found through `Unwrap` and through the writer a wrapper embeds. The client sees `unexpected EOF` on HTTP/1.x and a stream reset on HTTP/2, behind `gin.Recovery()` too, and `net/http` no longer logs `response.Write on hijacked connection`.
 
 ## [0.13.0] - 2026-11-04
 
