@@ -1,0 +1,224 @@
+---
+title: Testing
+description: Fake the SDK behind a narrow interface in Gin handler tests, pin gin.TestMode, and keep one live smoke test behind a build tag.
+---
+
+`*polipage.Client` is a concrete struct, not an interface. That suits the SDK, but a handler test cannot swap it for a fake directly. The idiomatic Go answer is for the consumer to define a narrow interface with only the methods its code calls, and to fake that in tests. This integration ships no generic interface, and no handler test needs to reach `api.poli.page`.
+
+## Define a narrow interface
+
+`*polipage.Client.Render` satisfies the interface in production, since Go interfaces are structural. In tests you implement it with a struct.
+
+```go
+// internal/render/render.go
+package render
+
+import (
+	"context"
+
+	"github.com/poli-page/sdk-go"
+	"github.com/poli-page/sdk-go/option"
+)
+
+// InvoiceRenderer is what InvoiceController needs from the SDK — nothing more.
+type InvoiceRenderer interface {
+	PDF(ctx context.Context, in polipage.RenderInput, opts ...option.RequestOption) ([]byte, error)
+}
+```
+
+Wire it into the handler. Production sets `Renderer` to `client.Render`, and tests set a fake:
+
+```go
+// internal/http/invoice_handler.go
+package http
+
+import (
+	"github.com/gin-gonic/gin"
+	"github.com/poli-page/sdk-go"
+	polipagegin "github.com/poli-page/gin"
+
+	"myapp/internal/render"
+)
+
+type InvoiceHandler struct {
+	Renderer render.InvoiceRenderer
+}
+
+func (h *InvoiceHandler) Show(c *gin.Context) {
+	pdf, err := h.Renderer.PDF(c.Request.Context(), polipage.RenderInput{
+		Project:  "billing",
+		Template: "invoice",
+		Data:     map[string]any{"invoiceNumber": c.Param("id")},
+	})
+	if err != nil {
+		polipagegin.WriteError(c, err)
+		return
+	}
+	polipagegin.PDF(c, pdf, polipagegin.PDFOptions{Filename: "invoice.pdf"})
+}
+```
+
+## Pin gin.TestMode
+
+Put a `TestMain` in a package-level `main_test.go`, once. Without `TestMode`, Gin prints route registration noise and logs recovered panics differently, which makes CI output harder to read.
+
+```go
+// internal/http/main_test.go
+package http_test
+
+import (
+	"os"
+	"testing"
+
+	"github.com/gin-gonic/gin"
+)
+
+func TestMain(m *testing.M) {
+	gin.SetMode(gin.TestMode)
+	os.Exit(m.Run())
+}
+```
+
+## Fake the interface
+
+No network, no `httptest.Server` faking the API, no `polipagegin.Middleware`. The handler under test is the production one, and only `Renderer` differs. The test under [Example](#example) does exactly this.
+
+## Fake an error
+
+`*polipage.Error` is a plain struct, so build one directly: `&polipage.Error{Code: "QUOTA_EXCEEDED", StatusCode: 429}`. Both the `errors.As` checks inside `polipagegin.WriteError` and your own checks accept it.
+
+## When the handler uses ClientFrom
+
+If the handler pulls the client with `polipagegin.ClientFrom(c)`, install a stub client under the context key with a small helper:
+
+```go
+// internal/http/testutil/middleware.go
+func StubClient(t *testing.T, stub *polipage.Client) gin.HandlerFunc {
+	t.Helper()
+	return func(c *gin.Context) {
+		c.Set(polipagegin.ContextKey, stub)
+		c.Next()
+	}
+}
+```
+
+Building a `*polipage.Client` for a test usually means calling the real API. At that point a `pp_sandbox_…` key and an integration test are the honest choice. The narrow interface remains the better default for unit-level handler tests.
+
+## Integration tests against the live API
+
+Keep one smoke test per repo. It lives in `tests/integration/` behind a build tag and skips unless the key is a sandbox key. Run it with `go test -tags=integration ./tests/integration/...`. `POLI_PAGE_BASE_URL` is optional: when set, the test targets that API host, and otherwise the SDK default. The test proves the wiring, the response shape and a real round trip, and nothing the SDK already tests.
+
+```go
+// tests/integration/render_against_live_test.go
+//go:build integration
+
+package integration
+
+import (
+	"context"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/poli-page/sdk-go"
+	"github.com/poli-page/sdk-go/option"
+)
+
+func TestRenderAgainstLiveAPI(t *testing.T) {
+	key := os.Getenv("POLI_PAGE_API_KEY")
+	if !strings.HasPrefix(key, "pp_sandbox_") {
+		t.Skip("POLI_PAGE_API_KEY is not a pp_sandbox_ key")
+	}
+
+	opts := []option.RequestOption{
+		option.WithAPIKey(key),
+		option.WithTimeout(30 * time.Second),
+	}
+	if baseURL := os.Getenv("POLI_PAGE_BASE_URL"); baseURL != "" {
+		opts = append(opts, option.WithBaseURL(baseURL))
+	}
+	client := polipage.NewClient(opts...)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	pdf, err := client.Render.PDF(ctx, polipage.RenderInput{
+		Project:  "billing",
+		Template: "invoice",
+		Data:     map[string]any{"invoiceNumber": "ci"},
+	})
+	if err != nil {
+		t.Fatalf("render failed: %v", err)
+	}
+	if len(pdf) < 100 {
+		t.Fatalf("pdf too small: %d bytes", len(pdf))
+	}
+}
+```
+
+## Gotchas
+
+- **Do not fake the Poli Page API with an `httptest.Server`.** You would rebuild the SDK's contract tests. Stub at the interface level and trust the SDK's own suite.
+- **`c.Request.Context()` has no deadline in tests.** `httptest.NewRequest` returns a request with `context.Background()`. If your handler relies on cancellation, build the request with `req = req.WithContext(ctx)`, where `ctx` is a `context.WithTimeout` you control.
+- **The narrow interface belongs in your app.** Every consumer's domain interface is different, so this package does not ship one.
+- **Integration tests need a `pp_sandbox_…` key.** Renders with a `pp_live_…` key, or the key of any other environment created on Pro+, count toward your organization's monthly PDF quota. Sandbox renders are watermarked and not counted.
+- **A streaming failure panics under `httptest`.** A mid-stream failure through `httptest.NewRecorder` or `gin.CreateTestContext` panics with `http.ErrAbortHandler` unless a recovery middleware catches it. See [Streaming](../../concepts/streaming/#a-failure-mid-stream).
+
+## Example
+
+A full handler test with a fake renderer. Run it with `go test -race ./...`.
+
+```go
+// internal/http/invoice_handler_test.go
+package http_test
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/gin-gonic/gin"
+	"github.com/poli-page/sdk-go"
+	"github.com/poli-page/sdk-go/option"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	apphttp "myapp/internal/http"
+)
+
+type fakeRenderer struct {
+	called  bool
+	gotIn   polipage.RenderInput
+	wantErr error
+	wantPDF []byte
+}
+
+func (f *fakeRenderer) PDF(_ context.Context, in polipage.RenderInput, _ ...option.RequestOption) ([]byte, error) {
+	f.called = true
+	f.gotIn = in
+	return f.wantPDF, f.wantErr
+}
+
+func TestInvoiceHandler_Show(t *testing.T) {
+	r := gin.New() // TestMain already pinned gin.TestMode.
+	fake := &fakeRenderer{wantPDF: []byte("%PDF-1.4")}
+	h := &apphttp.InvoiceHandler{Renderer: fake}
+	r.GET("/invoices/:id", h.Show)
+
+	req := httptest.NewRequest(http.MethodGet, "/invoices/42", http.NoBody)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/pdf", w.Header().Get("Content-Type"))
+	assert.True(t, fake.called)
+	assert.Equal(t, "42", fake.gotIn.Data["invoiceNumber"])
+}
+```
+
+## See also
+- [Middleware](../../concepts/middleware/)
+- [Client access](../../concepts/client-access/)
+- [Errors](../errors/)

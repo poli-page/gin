@@ -1,6 +1,20 @@
 # Poli Page for Gin
 
+[![Release](https://img.shields.io/github/v/release/poli-page/gin?display_name=tag&sort=semver&style=flat&logo=go&logoColor=ffffff&label=Release)](https://github.com/poli-page/gin/releases)
+[![Ci](https://img.shields.io/github/actions/workflow/status/poli-page/gin/ci.yml?branch=main&style=flat&logo=githubactions&logoColor=ffffff&label=Ci)](https://github.com/poli-page/gin/actions/workflows/ci.yml)
+[![Codeql](https://img.shields.io/github/actions/workflow/status/poli-page/gin/codeql.yml?branch=main&style=flat&logo=github&logoColor=ffffff&label=Codeql)](https://github.com/poli-page/gin/actions/workflows/codeql.yml)
+[![Coverage](https://img.shields.io/codecov/c/github/poli-page/gin?style=flat&logo=codecov&logoColor=ffffff&label=Coverage)](https://codecov.io/gh/poli-page/gin)
+[![Go](https://img.shields.io/badge/Go-1.25%2B-blue?style=flat&logo=go&logoColor=ffffff)](https://go.dev/)
+[![Gin](https://img.shields.io/badge/Gin-1.9%20%7C%201.10-blue?style=flat&logo=gin&logoColor=ffffff)](https://gin-gonic.com/)
+[![Lint](https://img.shields.io/badge/Lint-golangci--lint-blue?style=flat&logo=go&logoColor=ffffff)](https://golangci-lint.run/)
+[![Go.dev](https://img.shields.io/badge/Go.dev-reference-blue?style=flat&logo=go&logoColor=ffffff)](https://pkg.go.dev/github.com/poli-page/gin)
+[![Deps](https://img.shields.io/badge/Deps-up%20to%20date-brightgreen?style=flat&logo=go&logoColor=ffffff)](https://github.com/poli-page/gin/network/dependencies)
+[![Docs](https://img.shields.io/badge/Docs-online-brightgreen?style=flat&logo=readthedocs&logoColor=ffffff)](https://poli-page.github.io/gin/)
+[![License](https://img.shields.io/github/license/poli-page/gin?style=flat&logo=gnu&logoColor=ffffff&label=License)](LICENSE)
+
 > Render Poli Page documents as Gin HTTP responses.
+
+→ **Documentation**: https://poli-page.github.io/gin/
 
 ## About
 
@@ -149,7 +163,7 @@ client := polipage.NewClient(cfg.Options()...)
 | `polipagegin.Config` / `polipagegin.FromEnv()` | Env-driven configuration loader. |
 | `cmd/polipage-render` | Smoke-test binary that renders a template end-to-end. |
 
-Full reference: [pkg.go.dev/github.com/poli-page/gin](https://pkg.go.dev/github.com/poli-page/gin).
+Full reference: [API reference](https://poli-page.github.io/gin/reference/api/) on the documentation site, and [pkg.go.dev/github.com/poli-page/gin](https://pkg.go.dev/github.com/poli-page/gin).
 
 ## Errors
 
@@ -222,12 +236,14 @@ go run .
 
 ## Going further
 
-- [docs/middleware.md](docs/middleware.md) — `Middleware` lifecycle, `ClientFrom` semantics, multiple-client patterns, request-scoped context propagation.
-- [docs/responses.md](docs/responses.md) — All four response helpers, their headers, and the RFC 5987 filename encoding.
-- [docs/streaming.md](docs/streaming.md) — Stream multi-MB PDFs through `Render.PDFStream` and `polipagegin.PDFStream`.
-- [docs/events.md](docs/events.md) — Wire `option.WithOnRetry` / `option.WithOnError` into your logger, metrics, or `gin.Context` for per-request audit logs.
-- [docs/cli.md](docs/cli.md) — Every `polipage-render` flag, exit codes, and CI recipes.
-- [docs/testing.md](docs/testing.md) — Stub the SDK client behind a domain interface so handler tests never touch the network.
+The documentation site, <https://poli-page.github.io/gin/>, covers each topic on its own page:
+
+- [Middleware](https://poli-page.github.io/gin/concepts/middleware/) — `Middleware` lifecycle, `ClientFrom` semantics, multiple-client patterns, request-scoped context propagation.
+- [Responses](https://poli-page.github.io/gin/concepts/responses/) — All four response helpers, their headers, and the RFC 5987 filename encoding.
+- [Streaming](https://poli-page.github.io/gin/concepts/streaming/) — Stream multi-MB PDFs through `Render.PDFStream` and `polipagegin.PDFStream`.
+- [Observability](https://poli-page.github.io/gin/production/observability/) — Wire `option.WithOnRetry` / `option.WithOnError` into your logger, metrics, or `gin.Context` for per-request audit logs.
+- [The polipage-render CLI](https://poli-page.github.io/gin/concepts/cli/) — Every `polipage-render` flag, exit codes, and CI recipes.
+- [Testing](https://poli-page.github.io/gin/production/testing/) — Stub the SDK client behind a domain interface so handler tests never touch the network.
 
 ## Compatibility
 

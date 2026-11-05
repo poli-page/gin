@@ -1,0 +1,102 @@
+---
+title: Responses
+description: PDF, PDFStream, Preview and DocumentRedirect write Gin responses with the right Content-Type, Cache-Control and Content-Disposition.
+---
+
+`polipagegin.PDF`, `PDFStream`, `Preview` and `DocumentRedirect` write Gin responses with the headers Poli Page documents need: `Content-Type`, `Cache-Control: no-store, private`, `X-Content-Type-Options: nosniff`, and an RFC 5987 `Content-Disposition`. Handlers stay focused on the render call.
+
+## PDF
+
+`polipagegin.PDF(c, bytes, opts)` sends a buffered PDF, what you have after `client.Render.PDF(...)`. It sets the status to `200`, whatever `c.Status` said before.
+
+| `PDFOptions` field | Default | Description |
+| --- | --- | --- |
+| `Filename` | `document.pdf` | The filename shown to the browser. |
+| `Inline` | `false` | `true` sends `Content-Disposition: inline`, to view the PDF in the browser, for example in an `iframe`. `false` sends `attachment`, which downloads it. |
+
+The response carries:
+
+```text
+200 OK
+Content-Type: application/pdf
+Content-Length: <len(bytes)>
+Content-Disposition: attachment; filename="invoice-INV-001.pdf"; filename*=UTF-8''invoice-INV-001.pdf
+Cache-Control: no-store, private
+X-Content-Type-Options: nosniff
+```
+
+## Filename encoding
+
+`Filename` goes into two slots of `Content-Disposition`:
+
+- `filename="…"` is an ASCII fallback for clients that do not speak RFC 5987. Non-ASCII characters become `_`, and backslashes and double quotes are backslash-escaped as RFC 6266 section 4.1 asks.
+- `filename*=UTF-8''…` is the real UTF-8 name browsers display, percent-encoded byte by byte with the RFC 5987 `attr-char` set. `é` becomes `%C3%A9`.
+
+Control characters, including CR and LF, are stripped from the name first, so a filename cannot split the header.
+
+```text
+Filename: "facture-élève.pdf"
+Content-Disposition: attachment; filename="facture-_l_ve.pdf"; filename*=UTF-8''facture-%C3%A9l%C3%A8ve.pdf
+```
+
+## Streamed PDF
+
+`polipagegin.PDFStream(c, reader, opts)` writes the PDF as chunks arrive from `Render.PDFStream`, without buffering the document. It takes the same `PDFOptions`, sets `X-Accel-Buffering: no`, and sends no `Content-Length`. The handler closes the reader. The [Streaming page](../streaming/) has the details and the failure modes.
+
+## HTML preview
+
+`polipagegin.Preview(c, html)` writes a stored document's HTML, from `Documents.Preview(...).HTML`. It sets `Content-Type: text/html; charset=utf-8`, `Cache-Control: no-store, private` and `X-Content-Type-Options: nosniff`, and no `Content-Disposition`: the response is meant to be rendered.
+
+## Redirect to a stored document
+
+`polipagegin.DocumentRedirect(c, descriptor)` answers `302 Found` with `Location` set to the descriptor's `PresignedPDFURL` and `Cache-Control: no-store, private`. It writes no body: the browser fetches the PDF straight from object storage. A presigned URL lives about 15 minutes, so fetch the descriptor with `Documents.Get` when you need a fresh one.
+
+## Gotchas
+
+- **`Cache-Control: no-store, private` is the safe default.** Documents are tenant-scoped, and a shared proxy must never cache them.
+- **`Content-Length` is set for buffered responses only.** `PDFStream` uses chunked transfer encoding. Clients that need the size up front, such as range requests, should get `PDF`.
+- **One response path per handler.** Do not combine `polipagegin.PDF` with `c.JSON` in the same handler: both write headers and a body. Pick one and `return` right after.
+- **The helpers set status `200` unconditionally.** A `c.Status(http.StatusCreated)` before `polipagegin.PDF` is overwritten. For another status, write the headers yourself with `c.Header(...)` and `c.Data(status, "application/pdf", bytes)`.
+- **Keep PDF routes out of HTTP gzip.** A PDF is already compressed. With `gin-contrib/gzip`, exclude the route with `gzip.WithExcludedExtensions([]string{".pdf"})` or `gzip.WithExcludedPaths(...)`. The same goes for reverse proxies that rewrite `Content-Encoding`.
+
+## Example
+
+```go
+// handlers.go
+func invoicePDF(c *gin.Context) {
+	client := polipagegin.ClientFrom(c)
+	pdf, err := client.Render.PDF(c.Request.Context(), polipage.RenderInput{
+		Project:  "billing",
+		Template: "invoice",
+		Data:     map[string]any{"invoiceNumber": c.Param("number")},
+	})
+	if err != nil {
+		polipagegin.WriteError(c, err)
+		return
+	}
+	polipagegin.PDF(c, pdf, polipagegin.PDFOptions{Filename: "invoice-" + c.Param("number") + ".pdf"})
+}
+
+func documentPreview(c *gin.Context) {
+	result, err := polipagegin.ClientFrom(c).Documents.Preview(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		polipagegin.WriteError(c, err)
+		return
+	}
+	polipagegin.Preview(c, result.HTML)
+}
+
+func documentPDF(c *gin.Context) {
+	descriptor, err := polipagegin.ClientFrom(c).Documents.Get(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		polipagegin.WriteError(c, err)
+		return
+	}
+	polipagegin.DocumentRedirect(c, descriptor)
+}
+```
+
+## See also
+- [Streaming](../streaming/)
+- [Errors](../../production/errors/)
+- [API reference](../../reference/api/)

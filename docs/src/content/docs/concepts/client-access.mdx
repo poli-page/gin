@@ -1,0 +1,65 @@
+---
+title: Client access
+description: Reach the shared polipage.Client from a Gin handler with ClientFrom, or from your own code through the context key.
+---
+
+The integration shares one `*polipage.Client` across every handler. `polipagegin.Middleware` stores it on the `*gin.Context` of each request, and `polipagegin.ClientFrom(c)` reads it back. The client is safe for concurrent use and pools connections, so build it once at startup.
+
+## ClientFrom
+
+`polipagegin.ClientFrom(c)` returns the typed `*polipage.Client`. It panics with a clear message when `Middleware` was not installed on the route, or when something overwrote the context key with another type:
+
+```text
+polipagegin: Middleware(client) not installed; add r.Use(polipagegin.Middleware(client))
+```
+
+Gin's `Recovery()` turns the panic into a `500`. `gin.Default()` registers it; with `gin.New()` you add it yourself. See [Middleware](../middleware/#ginrecovery-is-required).
+
+## The context key
+
+The client lives under the context key `polipagegin.ContextKey`, whose value is `"polipagegin.client"`. Custom middleware, for example one that swaps the client per tenant, can write or read the same slot with `c.Set` and `c.Get`.
+
+Gin's context is a `map[string]any`. Reusing the string `"polipagegin.client"` for your own value silently overwrites the client, so use the exported constant.
+
+## Per-group clients
+
+A second `Middleware` on a router group replaces the client for that group's routes. See [Middleware](../middleware/#per-group-clients).
+
+## Request context
+
+Pass `c.Request.Context()` to every SDK call, never `context.Background()`. Gin cancels the request context when the client disconnects, and the SDK then aborts in flight with `polipage.ErrAborted`. With `context.Background()` the render keeps running after the connection closes.
+
+## Example
+
+```go
+// invoice_handler.go
+func invoiceHandler(c *gin.Context) {
+	client := polipagegin.ClientFrom(c)
+
+	pdf, err := client.Render.PDF(c.Request.Context(), polipage.RenderInput{
+		Project:  "billing",
+		Template: "invoice",
+		Data:     map[string]any{"invoiceNumber": "INV-001"},
+	})
+	if err != nil {
+		polipagegin.WriteError(c, err)
+		return
+	}
+	polipagegin.PDF(c, pdf, polipagegin.PDFOptions{Filename: "invoice.pdf"})
+}
+
+// A soft accessor that does not panic when the middleware is missing:
+func clientOrNil(c *gin.Context) *polipage.Client {
+	v, ok := c.Get(polipagegin.ContextKey)
+	if !ok {
+		return nil
+	}
+	client, _ := v.(*polipage.Client)
+	return client
+}
+```
+
+## See also
+- [Configuration](../configuration/)
+- [Responses](../responses/)
+- [Testing](../../production/testing/)

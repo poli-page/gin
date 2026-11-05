@@ -1,0 +1,22 @@
+---
+title: SDK
+description: The Go SDK under github.com/poli-page/gin, and where its documentation lives.
+---
+
+`github.com/poli-page/gin` wraps the Poli Page Go SDK, [`github.com/poli-page/sdk-go`](https://pkg.go.dev/github.com/poli-page/sdk-go). The `*polipage.Client` you reach with `ClientFrom`, its `Render` and `Documents` namespaces, and `*polipage.Error` are the SDK's own types, so the SDK's documentation covers every method and field they have.
+
+→ **Go SDK documentation**: https://poli-page.github.io/sdk-go/
+
+## Versions
+
+The integration requires `github.com/poli-page/sdk-go` `v0.13.0` in `go.mod`. Both share the major.minor of the Poli Page API. A `go.mod` requirement is a minimum, so keep the SDK on `0.13.x` while you use `0.13.x` of this module.
+
+| `github.com/poli-page/gin` | `github.com/poli-page/sdk-go` | Go |
+| --- | --- | --- |
+| `0.13.x` | `0.13.x` | `1.25+` |
+
+## Where to look
+
+- Render input, render methods and stored documents: the SDK's [Quick start](https://poli-page.github.io/sdk-go/getting-started/quick-start/) and [Client](https://poli-page.github.io/sdk-go/reference/client/) pages.
+- Retries, timeouts and cancellation: the SDK's [Retries and idempotency](https://poli-page.github.io/sdk-go/production/retries-and-idempotency/) and [Cancellation](https://poli-page.github.io/sdk-go/production/cancellation/) pages.
+- Every error code: the SDK's [Errors](https://poli-page.github.io/sdk-go/reference/errors/) page.

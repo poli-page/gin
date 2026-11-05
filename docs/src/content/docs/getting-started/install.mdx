@@ -1,0 +1,86 @@
+---
+title: Install
+description: Install github.com/poli-page/gin and github.com/poli-page/sdk-go, set your API key and add the middleware.
+---
+
+The Gin integration is the Go module `github.com/poli-page/gin`. It wraps the Go SDK, `github.com/poli-page/sdk-go`, so you install both and add `polipagegin.Middleware` to your router once.
+
+## Requirements
+
+- Go `1.25+`, the same floor as the SDK.
+- `github.com/poli-page/sdk-go` `v0.13.x`. The module requires `v0.13.0` and shares its major.minor with the Poli Page API and the SDK. A `go.mod` requirement is a minimum and cannot cap a version, so keep the SDK on `0.13.x` while you use `0.13.x` of this module.
+- Gin. CI runs the suite against Gin `v1.9.1` and `v1.10.0`, and the example app runs on `v1.12.0`.
+- A Poli Page API key, from [app.poli.page](https://app.poli.page).
+
+## Install the packages
+
+```bash
+go get github.com/poli-page/gin@v0.13.0 github.com/poli-page/sdk-go@v0.13.0
+```
+
+## Set your API key
+
+Put the key in the environment your app reads:
+
+```bash
+# .env
+POLI_PAGE_API_KEY=pp_sandbox_xxx
+```
+
+A key is `pp_{environment}_{32 lowercase hex}`. It belongs to one environment of your organization, and that environment's published copy of the project is the one rendered, so a render never names a version:
+
+| Environment | Key | Watermark | Counted |
+| --- | --- | --- | --- |
+| `sandbox` (every org) | `pp_sandbox_…` | yes | no |
+| `live` (every org, deletable on Pro+) | `pp_live_…` | no | yes |
+| created on Pro+ (e.g. `staging`) | `pp_staging_…` | no | yes |
+
+"Counted" means the render counts toward the organization's monthly PDF quota.
+
+## Verify the key
+
+The module ships a smoke-test binary, [`polipage-render`](../../concepts/cli/). It renders the `welcome` template of the `getting-started` project, which every organization has in `sandbox`:
+
+```bash
+go run github.com/poli-page/gin/cmd/polipage-render \
+    --project=getting-started \
+    --template=welcome \
+    --data='{"name":"World"}' \
+    -o welcome.pdf
+```
+
+## Add the middleware
+
+Install `polipagegin.Middleware(client)` once on your router. It attaches the SDK client to every request and answers a queued `*polipage.Error` as JSON. The [middleware page](../../concepts/middleware/) covers its lifecycle.
+
+## Example
+
+```go
+// main.go
+package main
+
+import (
+	"log"
+	"os"
+
+	"github.com/gin-gonic/gin"
+	polipagegin "github.com/poli-page/gin"
+	polipage "github.com/poli-page/sdk-go"
+	"github.com/poli-page/sdk-go/option"
+)
+
+func main() {
+	client := polipage.NewClient(
+		option.WithAPIKey(os.Getenv("POLI_PAGE_API_KEY")),
+	)
+
+	r := gin.Default() // includes gin.Recovery()
+	r.Use(polipagegin.Middleware(client))
+
+	log.Fatal(r.Run(":8080"))
+}
+```
+
+## See also
+- [Quick start](../quick-start/)
+- [Configuration](../../concepts/configuration/)

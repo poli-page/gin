@@ -59,6 +59,18 @@ go build ./...
 (cd example-app && go vet ./... && golangci-lint run && go build ./...)
 ```
 
+## Docs site
+
+The documentation site is an Astro Starlight project in `docs/`, published to <https://poli-page.github.io/gin/> by `.github/workflows/docs.yml` on every push to `main`. Its pages are in `docs/src/content/docs/`. A page that changes behavior, a flag or an environment variable changes with the code. To build it locally:
+
+```bash
+cd docs
+npm ci
+npm run build
+```
+
+`docs/src/preset/` is a vendored copy of the shared Poli Page docs preset; see its `README.md` before editing it.
+
 ## Pull requests
 
 - Branch off `main`; open the PR against `main`.
@@ -68,7 +80,7 @@ go build ./...
 
 ## Releasing
 
-Releases are manual, as in [`poli-page/sdk-go`](https://github.com/poli-page/sdk-go). The Go module system is the registry: pushing a `vX.Y.Z` tag is the whole release. `proxy.golang.org` serves the tag within minutes of the first request for it, and `sum.golang.org` records its checksum. The module has no version constant; the tag is its version. Nothing is set up on a registry: no account, token, secret or GitHub environment.
+Releases are manual, as in [`poli-page/sdk-go`](https://github.com/poli-page/sdk-go): nothing publishes until you push a tag. The Go module system is the registry: pushing a `vX.Y.Z` tag publishes the module. `proxy.golang.org` serves the tag within minutes of the first request for it, and `sum.golang.org` records its checksum. When the Release workflow's checks pass on the tag, it also creates the GitHub Release for it, with the `CHANGELOG.md` section as its notes (a `-` tag is marked prerelease). The module has no version constant; the tag is its version. Nothing is set up on a registry: no account, token, secret or GitHub environment.
 
 Module path: `github.com/poli-page/gin`. The path belongs to this repository, so no name has to be reserved. The first tagged version is `v0.11.0`; before it the proxy lists only pseudo-versions of `main`.
 
@@ -78,7 +90,7 @@ What the module ships: the tracked files of the repository root and its packages
 
 `github.com/poli-page/gin` shares its major.minor with the Poli Page API: module `0.13.x` talks to API `0.13`, passes the [API contract](https://github.com/poli-page/api-contract) `v0.13.0`, and requires `github.com/poli-page/sdk-go` of the same minor (`v0.13.0` in both `go.mod` files). A `go.mod` requirement is a minimum and cannot cap the version, so the README asks users to keep the SDK on `0.13.x`. Patch numbers are free: a fix to the module alone is a patch, whatever the API's or the SDK's patch. A change of the API contract, a new feature, and a raise of the minimum Go or Gin version are each a minor. The module may skip minors when it has nothing to ship for one; there was no `0.12`.
 
-`scripts/check-release-versions.sh vX.Y.Z` refuses a version whose major.minor differs from the contract version pinned in `.github/workflows/ci.yml` (a stable contract tag on the pinned commit, never the comment next to it or a commented-out line; every workflow that pins the contract must pin the same commit) or from the `github.com/poli-page/sdk-go` requirement in `go.mod` and `example-app/go.mod`, and names both versions. It also refuses a version with no `## [X.Y.Z] - ` section in `CHANGELOG.md`. A pushed tag is the release, so run it before tagging (step 4 below); the Release workflow (`.github/workflows/release.yml`) re-runs it on the pushed tag, so a mismatch shows up red at once.
+`scripts/check-release-versions.sh vX.Y.Z` refuses a version whose major.minor differs from the contract version pinned in `.github/workflows/ci.yml` (a stable contract tag on the pinned commit, never the comment next to it or a commented-out line; every workflow that pins the contract must pin the same commit) or from the `github.com/poli-page/sdk-go` requirement in `go.mod` and `example-app/go.mod`, and names both versions. It also refuses a version with no `## [X.Y.Z] - ` section in `CHANGELOG.md`. A pushed tag publishes the module, so run it before tagging (step 4 below); the Release workflow (`.github/workflows/release.yml`) re-runs it on the pushed tag, so a mismatch shows up red at once, and creates the GitHub Release only when it passes.
 
 ### Each release
 
@@ -112,9 +124,9 @@ What the module ships: the tracked files of the repository root and its packages
      && git tag vX.Y.Z "$checked" && git push origin vX.Y.Z
    ```
    A pushed tag is final: the checksum database keeps it, so a fix goes into a new version (`retract` in `go.mod` to warn users off a bad one).
-6. Check that the Release workflow is green on the tag.
+6. Watch the Release workflow on the tag: it checks the tag, then creates the GitHub Release.
 7. Request the version once so the proxy fetches it: `GOPROXY=https://proxy.golang.org GO111MODULE=on go list -m github.com/poli-page/gin@vX.Y.Z`. Then open `https://pkg.go.dev/github.com/poli-page/gin@vX.Y.Z` and, if it is not listed yet, click "Request" on that page.
-8. Optionally create a GitHub release from the tag with the `CHANGELOG` section: `gh release create vX.Y.Z --notes-file <section>`. There are no binary artifacts; the module is the artifact.
+8. Check that the GitHub Release exists for the tag. There are no binary artifacts; the module is the artifact.
 
 ## Reporting issues
 

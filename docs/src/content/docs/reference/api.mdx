@@ -1,0 +1,139 @@
+---
+title: API
+description: Every exported symbol of github.com/poli-page/gin, with its signature and exact behavior.
+---
+
+The import path is `github.com/poli-page/gin` and the package name is `polipagegin`. The full godoc is on [pkg.go.dev](https://pkg.go.dev/github.com/poli-page/gin). The client, render methods and error type come from the Go SDK: see [SDK](../sdk/).
+
+```go
+import polipagegin "github.com/poli-page/gin"
+```
+
+## Middleware
+
+```go
+func Middleware(client *polipage.Client, opts ...MiddlewareOption) gin.HandlerFunc
+```
+
+Attaches `client` to every request's `*gin.Context` under `ContextKey`, then runs the rest of the chain. When the chain returns, the error handler (on by default) answers a queued `*polipage.Error`. A nil `client` panics at install time with `polipagegin: Middleware called with nil client`. Install `gin.Recovery()` too: `gin.Default()` has it, `gin.New()` does not.
+
+## WithoutErrorHandler
+
+```go
+type MiddlewareOption func(*middlewareConfig)
+
+func WithoutErrorHandler() MiddlewareOption
+```
+
+A `Middleware` option that turns the error handler off. A `*polipage.Error` queued on `c.Errors` is then left for your own error handling, or for `ErrorMiddleware` installed elsewhere.
+
+## ClientFrom
+
+```go
+func ClientFrom(c *gin.Context) *polipage.Client
+```
+
+Returns the client `Middleware` stored on `c`. It panics when the middleware was not installed on the route (`polipagegin: Middleware(client) not installed; add r.Use(polipagegin.Middleware(client))`), or when `ContextKey` holds a value of another type (`polipagegin: context key "polipagegin.client" holds non-*polipage.Client value (got T)`).
+
+## ContextKey
+
+```go
+const ContextKey = "polipagegin.client"
+```
+
+The `gin.Context` key under which `Middleware` stores the client. Custom middleware can read or write the same slot.
+
+## ErrorMiddleware
+
+```go
+func ErrorMiddleware() gin.HandlerFunc
+```
+
+The error handler on its own. It runs the rest of the chain with `c.Next()`, then answers the last error on `c.Errors` when it is a `*polipage.Error` and no response was written yet. The body is `err.ToPayload()` with `Content-Type: application/json`. The status is the payload's `status`, or `500` when it has none. Other error types are left untouched. See [Errors](../../production/errors/).
+
+## WriteError
+
+```go
+func WriteError(c *gin.Context, err error)
+```
+
+The per-handler version of the error handler: the same JSON body and status, written at once. An `err` that is not a `*polipage.Error` (found with `errors.As`) gets `c.AbortWithStatus(500)` and no body.
+
+## PDFOptions
+
+```go
+type PDFOptions struct {
+	Filename string // default "document.pdf"
+	Inline   bool   // true: Content-Disposition inline; false: attachment
+}
+```
+
+Controls `Content-Disposition` for `PDF` and `PDFStream`. See [Responses](../../concepts/responses/#filename-encoding).
+
+## PDF
+
+```go
+func PDF(c *gin.Context, body []byte, opts PDFOptions)
+```
+
+Writes a buffered PDF: status `200`, `Content-Type: application/pdf`, `Content-Length`, `Cache-Control: no-store, private`, `X-Content-Type-Options: nosniff` and the `Content-Disposition`. The status is set unconditionally to `200`.
+
+## PDFStream
+
+```go
+func PDFStream(c *gin.Context, body io.Reader, opts PDFOptions)
+```
+
+Writes a chunked PDF: the headers of `PDF` without `Content-Length`, plus `X-Accel-Buffering: no`. It reads `body` 32 KB at a time and flushes after each chunk. It never closes `body`. A nil reader panics with `polipagegin: PDFStream called with nil reader`. A failure on the first read writes nothing and queues the error on `c.Errors`; a later failure queues the error and cuts the response. See [Streaming](../../concepts/streaming/).
+
+## Preview
+
+```go
+func Preview(c *gin.Context, html string)
+```
+
+Writes an HTML preview: status `200`, `Content-Type: text/html; charset=utf-8`, `Cache-Control: no-store, private`, `X-Content-Type-Options: nosniff`, and no `Content-Disposition`.
+
+## DocumentRedirect
+
+```go
+func DocumentRedirect(c *gin.Context, descriptor *polipage.DocumentDescriptor)
+```
+
+Answers `302 Found` with `Location` set to `descriptor.PresignedPDFURL` and `Cache-Control: no-store, private`, and no body.
+
+## Config
+
+```go
+type Config struct {
+	APIKey     string
+	BaseURL    string        // http:// or https:// when set
+	Timeout    time.Duration // in (0, 10m] when set
+	MaxRetries int           // in [0, 10] when set; an explicit 0 is honored
+	RetryDelay time.Duration // in [0, 30s] when set; an explicit 0 is honored
+}
+
+func (c Config) Options() []option.RequestOption
+```
+
+The configuration `FromEnv` loads. `Options` returns the `option.RequestOption` slice for `polipage.NewClient`. Only fields that were set contribute an option, so the SDK keeps its defaults for the rest. See [Configuration](../../concepts/configuration/).
+
+## FromEnv
+
+```go
+func FromEnv() (Config, error)
+```
+
+Loads `Config` from `POLI_PAGE_API_KEY`, `POLI_PAGE_BASE_URL`, `POLI_PAGE_TIMEOUT`, `POLI_PAGE_MAX_RETRIES` and `POLI_PAGE_RETRY_DELAY`, validating each one. An unset or empty optional variable means the SDK default. The error wraps `ErrInvalidConfig` and names the variable, for example `polipagegin: invalid configuration: POLI_PAGE_API_KEY is required`.
+
+## ErrInvalidConfig
+
+```go
+var ErrInvalidConfig = errors.New("polipagegin: invalid configuration")
+```
+
+The sentinel every `FromEnv` error wraps. Test it with `errors.Is`.
+
+## polipage-render
+
+The `cmd/polipage-render` binary is not part of the Go API. See [the CLI page](../../concepts/cli/).

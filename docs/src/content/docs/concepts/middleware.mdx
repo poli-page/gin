@@ -1,0 +1,84 @@
+---
+title: Middleware
+description: How polipagegin.Middleware attaches the client to Gin, installs the error handler, and works with gin.Recovery and router groups.
+---
+
+Install `polipagegin.Middleware(client)` once on your router, then pull the per-request `*polipage.Client` from `*gin.Context` with `polipagegin.ClientFrom(c)` inside every handler. This is the idiomatic Gin shape, as in `gin-contrib/sessions` and most middleware-shaped Gin packages. It keeps the wiring visible and makes per-group overrides cheap, where a package-level singleton would couple every handler to a global.
+
+## What it does
+
+`Middleware` returns a `gin.HandlerFunc`. For each request it:
+
+1. calls `c.Set(polipagegin.ContextKey, client)` and yields to the next handler, with no allocation beyond the map entry Gin already keeps;
+2. when the handler chain returns, runs the error handler (on by default): it answers the last `*polipage.Error` queued with `c.Error(err)`, unless a response was already written. The status is `err.ToPayload().Status` (`500` when it has none), and the body is `err.ToPayload()`. See [Errors](../../production/errors/).
+
+Pass a nil client and `Middleware` panics at install time, so the app fails to boot rather than failing on the first request.
+
+Install it with `Use` on the `*gin.Engine` (global) or on any `*gin.RouterGroup` (scoped to that group's routes).
+
+## Turn the error handler off
+
+`polipagegin.Middleware(client, polipagegin.WithoutErrorHandler())` leaves a queued `*polipage.Error` for your own error handling. `polipagegin.ErrorMiddleware()` is the same handler on its own, for when you want it somewhere else in the chain, for example on a different router group.
+
+## gin.Recovery() is required
+
+`ClientFrom` panics when the middleware was not installed. Gin's `Recovery()` middleware catches that panic and converts it to a `500`. `gin.Default()` registers `Recovery()`. If you bootstrap with `gin.New()`, add `r.Use(gin.Recovery())` before `polipagegin.Middleware(client)`, or the panic crashes the process. The same rule holds for any panic from a handler.
+
+```go
+// main.go
+r := gin.New()
+r.Use(gin.Recovery())                 // required
+r.Use(polipagegin.Middleware(client)) // safe to panic from here on
+```
+
+## Per-group clients
+
+A second middleware on a sub-group, with a different client (another API key, other callbacks), runs after the global one. Its `c.Set` overwrites the first for the duration of the request:
+
+```go
+// main.go
+secondary := polipage.NewClient(
+	option.WithAPIKey(os.Getenv("POLI_PAGE_SECONDARY_KEY")),
+)
+
+r.Use(polipagegin.Middleware(primary))
+
+dev := r.Group("/dev")
+dev.Use(polipagegin.Middleware(secondary))
+dev.GET("/preview", previewHandler) // ClientFrom returns secondary here
+```
+
+## Gotchas
+
+- **Do not share the client across processes.** The client you build in `main` is process-local, and pooled connections do not survive a restart. Each replica builds its own.
+- **Do not build a client per request.** `polipage.NewClient` validates its options on the first method call, but it still allocates and warms up a transport. Build once at startup, install once with `Middleware`, and reuse it.
+- **Avoid `context.WithTimeout` on top of `c.Request.Context()` unless you mean it.** The SDK already honors `option.WithTimeout` and `option.WithRequestTimeout`. A shorter request deadline is fine to fail fast, but layering it on an SDK timeout usually means you should pick one.
+- **The context key can clash.** `c.Set` and `c.Get` share one `map[string]any`. Use `polipagegin.ContextKey` instead of the literal string.
+
+## Example
+
+```go
+// main.go
+client := polipage.NewClient(option.WithAPIKey(os.Getenv("POLI_PAGE_API_KEY")))
+
+r := gin.Default() // Default includes gin.Recovery()
+r.Use(polipagegin.Middleware(client))
+
+r.GET("/invoices/:number", func(c *gin.Context) {
+	pdf, err := polipagegin.ClientFrom(c).Render.PDF(c.Request.Context(), polipage.RenderInput{
+		Project:  "billing",
+		Template: "invoice",
+		Data:     map[string]any{"invoiceNumber": c.Param("number")},
+	})
+	if err != nil {
+		polipagegin.WriteError(c, err)
+		return
+	}
+	polipagegin.PDF(c, pdf, polipagegin.PDFOptions{Filename: "invoice.pdf"})
+})
+```
+
+## See also
+- [Client access](../client-access/)
+- [Responses](../responses/)
+- [Testing](../../production/testing/)

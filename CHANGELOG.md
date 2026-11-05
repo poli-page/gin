@@ -4,6 +4,14 @@ All notable changes to `poli-page/gin` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+### Added
+- A documentation site at <https://poli-page.github.io/gin/>, built from `docs/` and deployed by the new Docs workflow. It replaces the six pages that were in `docs/*.md`, and the README links to the site.
+- CodeQL workflow, and coverage uploaded to Codecov from CI.
+- The README badge row, as on `poli-page/sdk-go` and with a Gin chip.
+
+### Changed
+- The Release workflow creates the GitHub Release for the pushed tag, with the `CHANGELOG.md` section as its notes, once its version checks pass.
+
 ## [0.13.0] - 2026-11-04
 
 Requires `github.com/poli-page/sdk-go` 0.13 and passes the Poli Page API contract v0.13.0. The module now shares its major.minor with the Poli Page API, so it moves from 0.11 to 0.13; there was no 0.12 (see [CONTRIBUTING.md](CONTRIBUTING.md#versions)).
