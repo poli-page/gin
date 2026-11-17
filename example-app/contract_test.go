@@ -46,7 +46,7 @@ import (
 
 // contractFormatVersion is the contract.json layout this file reads (README of
 // poli-page/api-contract).
-const contractFormatVersion = 1
+const contractFormatVersion = 2
 
 // contractTestAPIKey is the API key the app's SDK client sends to the local server.
 const contractTestAPIKey = "pp_sandbox_0123456789abcdef0123456789abcdef"
@@ -65,7 +65,7 @@ var (
 )
 
 // ---------------------------------------------------------------------------
-// Contract format 1
+// Contract format 2
 // ---------------------------------------------------------------------------
 
 type contractFile struct {
