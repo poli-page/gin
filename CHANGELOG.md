@@ -4,7 +4,14 @@ All notable changes to `poli-page/gin` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-17
+
+Requires `github.com/poli-page/sdk-go` 0.15 and passes the Poli Page API contract v0.15.0. There was no 0.14: the module shares its major.minor with the Poli Page API and had nothing to ship for that minor.
+
 ### Changed
+- `go.mod` and `example-app/go.mod` require `github.com/poli-page/sdk-go` `v0.15.0` (was `v0.13.0`). Keep the SDK on `0.15.x` while you use `0.15.x` of this module.
+- Contract tests: CI and the nightly Go tip workflow run the integration cases of the Poli Page API contract v0.15.0 (was v0.13.0). Its integration cases are unchanged.
+- The example app's demo page shows `v0.15.0` (it still said `v0.1.0`).
 - The nightly Go tip workflow tests Gin `v1.12.0` (the floor; it still pinned `v1.10.0`) and Gin `master`.
 
 ## [0.13.1] - 2026-11-05
@@ -84,7 +91,8 @@ First release. The version matches the `github.com/poli-page/sdk-go` `v0.11.0` r
 - `gin.Recovery()` is a hard prerequisite: `polipagegin.ClientFrom` panics on misuse, and that panic must be caught by Gin's recovery middleware. `gin.Default()` includes it; `gin.New()` does not (you wire `r.Use(gin.Recovery())` yourself before `polipagegin.Middleware`).
 - The example app sets `gin.SetMode(gin.ReleaseMode)`, registers `gin.Recovery` explicitly, calls `r.SetTrustedProxies(nil)`, and drains in-flight renders via `http.Server.Shutdown` on `SIGTERM`. Production-shape on purpose — consumers copy this `main.go`.
 
-[Unreleased]: https://github.com/poli-page/gin/compare/v0.13.1...HEAD
+[Unreleased]: https://github.com/poli-page/gin/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/poli-page/gin/compare/v0.13.1...v0.15.0
 [0.13.1]: https://github.com/poli-page/gin/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/poli-page/gin/compare/v0.11.0...v0.13.0
 [0.11.0]: https://github.com/poli-page/gin/releases/tag/v0.11.0

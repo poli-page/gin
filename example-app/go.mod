@@ -7,7 +7,7 @@ replace github.com/poli-page/gin => ..
 require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/poli-page/gin v0.0.0-00010101000000-000000000000
-	github.com/poli-page/sdk-go v0.13.0
+	github.com/poli-page/sdk-go v0.15.0
 	github.com/stretchr/testify v1.12.1
 )
 
