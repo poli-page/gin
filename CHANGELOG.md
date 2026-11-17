@@ -4,7 +4,7 @@ All notable changes to `poli-page/gin` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
-## [0.15.0] - 2026-11-16
+## [0.15.0] - 2026-11-17
 
 Requires `github.com/poli-page/sdk-go` 0.15 and passes the Poli Page API contract v0.15.0. There was no 0.14: the module shares its major.minor with the Poli Page API and had nothing to ship for that minor.
 
