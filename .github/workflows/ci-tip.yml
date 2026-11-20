@@ -24,7 +24,7 @@ jobs:
       # setup-go cannot resolve a literal "tip"; bootstrap with stable, then
       # install the toolchain via golang.org/dl/gotip and put its `go` on PATH
       # so every step below runs under tip without per-step rewrites.
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@v7.1.0
         with:
           go-version: 'stable'
           cache: false
